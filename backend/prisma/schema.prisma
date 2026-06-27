@@ -29,14 +29,14 @@ model Team {
 }
 
 model Player {
-  id            String        @id @default(uuid())
+  id            String         @id @default(uuid())
   teamId        String
   name          String
   number        String
   position      String
-  isLibero      Boolean       @default(false)
-  isActive      Boolean       @default(true)
-  team          Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  isLibero      Boolean        @default(false)
+  isActive      Boolean        @default(true)
+  team          Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
   lineupSlots   LineupSlot[]
   subsOut       Substitution[] @relation("PlayerOut")
   subsIn        Substitution[] @relation("PlayerIn")
@@ -104,16 +104,16 @@ model Rotation {
 }
 
 model Substitution {
-  id           String   @id @default(uuid())
-  setId        String
-  playerOutId  String
-  playerInId   String
-  atScoreUs    Int
-  atScoreThem  Int
-  subbedAt     DateTime @default(now())
-  set          MatchSet @relation(fields: [setId], references: [id], onDelete: Cascade)
-  playerOut    Player   @relation("PlayerOut", fields: [playerOutId], references: [id])
-  playerIn     Player   @relation("PlayerIn", fields: [playerInId], references: [id])
+  id          String   @id @default(uuid())
+  setId       String
+  playerOutId String
+  playerInId  String
+  atScoreUs   Int
+  atScoreThem Int
+  subbedAt    DateTime @default(now())
+  set         MatchSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+  playerOut   Player   @relation("PlayerOut", fields: [playerOutId], references: [id])
+  playerIn    Player   @relation("PlayerIn", fields: [playerInId], references: [id])
 }
 
 model Challenge {
