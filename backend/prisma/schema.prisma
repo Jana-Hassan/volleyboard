@@ -1,0 +1,138 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  teams        Team[]
+}
+
+model Team {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  logoUrl   String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  players   Player[]
+  lineups   Lineup[]
+  matches   Match[]
+}
+
+model Player {
+  id            String        @id @default(uuid())
+  teamId        String
+  name          String
+  number        String
+  position      String
+  isLibero      Boolean       @default(false)
+  isActive      Boolean       @default(true)
+  team          Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  lineupSlots   LineupSlot[]
+  subsOut       Substitution[] @relation("PlayerOut")
+  subsIn        Substitution[] @relation("PlayerIn")
+}
+
+model Lineup {
+  id             String       @id @default(uuid())
+  teamId         String
+  name           String
+  rotationSystem String
+  createdAt      DateTime     @default(now())
+  team           Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  slots          LineupSlot[]
+  matches        Match[]
+}
+
+model LineupSlot {
+  id               String  @id @default(uuid())
+  lineupId         String
+  playerId         String
+  role             String
+  rotationPosition Int?
+  lineup           Lineup  @relation(fields: [lineupId], references: [id], onDelete: Cascade)
+  player           Player  @relation(fields: [playerId], references: [id], onDelete: Cascade)
+}
+
+model Match {
+  id           String     @id @default(uuid())
+  teamId       String
+  lineupId     String
+  opponentName String
+  status       String     @default("pending")
+  startedAt    DateTime?
+  endedAt      DateTime?
+  team         Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  lineup       Lineup     @relation(fields: [lineupId], references: [id])
+  sets         MatchSet[]
+}
+
+model MatchSet {
+  id                     String         @id @default(uuid())
+  matchId                String
+  setNumber              Int
+  ourScore               Int            @default(0)
+  opponentScore          Int            @default(0)
+  currentRotation        Int            @default(1)
+  subCount               Int            @default(0)
+  ourChallengesRemaining Int            @default(2)
+  oppChallengesRemaining Int            @default(2)
+  status                 String         @default("active")
+  match                  Match          @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  rotations              Rotation[]
+  substitutions          Substitution[]
+  challenges             Challenge[]
+  events                 MatchEvent[]
+}
+
+model Rotation {
+  id             String   @id @default(uuid())
+  setId          String
+  rotationNumber Int
+  positions      Json
+  recordedAt     DateTime @default(now())
+  set            MatchSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+}
+
+model Substitution {
+  id           String   @id @default(uuid())
+  setId        String
+  playerOutId  String
+  playerInId   String
+  atScoreUs    Int
+  atScoreThem  Int
+  subbedAt     DateTime @default(now())
+  set          MatchSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+  playerOut    Player   @relation("PlayerOut", fields: [playerOutId], references: [id])
+  playerIn     Player   @relation("PlayerIn", fields: [playerInId], references: [id])
+}
+
+model Challenge {
+  id           String   @id @default(uuid())
+  setId        String
+  challenger   String
+  callType     String
+  successful   Boolean?
+  atScoreUs    Int
+  atScoreThem  Int
+  challengedAt DateTime @default(now())
+  set          MatchSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+}
+
+model MatchEvent {
+  id         String   @id @default(uuid())
+  setId      String
+  eventType  String
+  payload    Json
+  occurredAt DateTime @default(now())
+  set        MatchSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+}

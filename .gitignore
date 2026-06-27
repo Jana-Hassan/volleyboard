@@ -1,1 +1,35 @@
 .history/
+
+# dependencies
+node_modules/
+
+# environment variables
+.env
+.env.local
+.env.production
+
+# typescript compiled output
+dist/
+
+# prisma generated client
+backend/node_modules/
+frontend/node_modules/
+
+# logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# editor
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# docker
+docker-compose.override.yml
