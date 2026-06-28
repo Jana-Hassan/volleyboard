@@ -4,6 +4,9 @@ import { Server } from 'socket.io'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import authRoutes from './routes/auth.routes'
+import teamRoutes from './routes/team.routes'
+import playerRoutes from './routes/player.routes'
+
 
 dotenv.config()
 
@@ -20,6 +23,9 @@ app.use(cors({ origin: 'http://localhost:5173' }))
 app.use(express.json())
 
 app.use('/api/v1/auth', authRoutes)
+app.use('/api/v1/teams', teamRoutes)
+app.use('/api/v1/teams/:teamId/players', playerRoutes)
+
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', project: 'VolleyBoard' })
