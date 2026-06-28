@@ -9,7 +9,8 @@ export const createTeam = async (userId: string, name: string, logoUrl?: string)
       logoUrl,
       members: {
         create: {
-          userId
+          userId,
+          role: 'manager'
         }
       }
     },
@@ -105,6 +106,7 @@ export const updateTeam = async (teamId: string, userId: string, data: { name?: 
   })
 
   if (!member) throw new Error('FORBIDDEN')
+  if (member.role !== 'manager') throw new Error('FORBIDDEN')
 
   const team = await prisma.team.update({
     where: { id: teamId },
@@ -120,18 +122,28 @@ export const deleteTeam = async (teamId: string, userId: string) => {
   })
 
   if (!member) throw new Error('FORBIDDEN')
+  if (member.role !== 'manager') throw new Error('FORBIDDEN')
 
   await prisma.team.delete({
     where: { id: teamId }
   })
 }
 
-export const inviteMember = async (teamId: string, userId: string, inviteeEmail: string) => {
+export const inviteMember = async (
+  teamId: string,
+  userId: string,
+  inviteeEmail: string,
+  role: string = 'analyst'
+) => {
   const member = await prisma.teamMember.findUnique({
     where: { teamId_userId: { teamId, userId } }
   })
 
   if (!member) throw new Error('FORBIDDEN')
+  if (member.role !== 'manager') throw new Error('FORBIDDEN')
+
+  const validRoles = ['coach', 'assistant', 'analyst', 'trainer']
+  if (!validRoles.includes(role)) throw new Error('INVALID_ROLE')
 
   const invitee = await prisma.user.findUnique({
     where: { email: inviteeEmail }
@@ -148,7 +160,8 @@ export const inviteMember = async (teamId: string, userId: string, inviteeEmail:
   const newMember = await prisma.teamMember.create({
     data: {
       teamId,
-      userId: invitee.id
+      userId: invitee.id,
+      role
     },
     include: {
       user: {
@@ -170,6 +183,7 @@ export const removeMember = async (teamId: string, userId: string, memberId: str
   })
 
   if (!member) throw new Error('FORBIDDEN')
+  if (member.role !== 'manager') throw new Error('FORBIDDEN')
 
   await prisma.teamMember.delete({
     where: { teamId_userId: { teamId, userId: memberId } }

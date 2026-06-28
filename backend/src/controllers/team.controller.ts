@@ -55,7 +55,7 @@ export const update = async (req: AuthRequest, res: Response): Promise<void> => 
     res.status(200).json(team)
   } catch (error) {
     if (error instanceof Error && error.message === 'FORBIDDEN') {
-      res.status(403).json({ error: 'Forbidden' })
+      res.status(403).json({ error: 'Forbidden — only managers can update team details' })
       return
     }
     res.status(500).json({ error: 'Internal server error' })
@@ -69,7 +69,7 @@ export const remove = async (req: AuthRequest, res: Response): Promise<void> => 
     res.status(204).send()
   } catch (error) {
     if (error instanceof Error && error.message === 'FORBIDDEN') {
-      res.status(403).json({ error: 'Forbidden' })
+      res.status(403).json({ error: 'Forbidden — only managers can delete a team' })
       return
     }
     res.status(500).json({ error: 'Internal server error' })
@@ -79,17 +79,21 @@ export const remove = async (req: AuthRequest, res: Response): Promise<void> => 
 export const invite = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { teamId } = req.params as { teamId: string }
-    const { email } = req.body
+    const { email, role } = req.body
     if (!email) {
       res.status(400).json({ error: 'Email is required' })
       return
     }
-    const member = await inviteMember(teamId, req.user!.userId, email)
+    const member = await inviteMember(teamId, req.user!.userId, email, role)
     res.status(201).json(member)
   } catch (error) {
     if (error instanceof Error) {
       if (error.message === 'FORBIDDEN') {
-        res.status(403).json({ error: 'Forbidden' })
+        res.status(403).json({ error: 'Forbidden — only managers can invite members' })
+        return
+      }
+      if (error.message === 'INVALID_ROLE') {
+        res.status(400).json({ error: 'Invalid role. Must be coach, assistant, analyst or trainer' })
         return
       }
       if (error.message === 'USER_NOT_FOUND') {
@@ -112,7 +116,7 @@ export const kickMember = async (req: AuthRequest, res: Response): Promise<void>
     res.status(204).send()
   } catch (error) {
     if (error instanceof Error && error.message === 'FORBIDDEN') {
-      res.status(403).json({ error: 'Forbidden' })
+      res.status(403).json({ error: 'Forbidden — only managers can remove members' })
       return
     }
     res.status(500).json({ error: 'Internal server error' })
