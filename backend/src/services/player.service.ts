@@ -1,6 +1,5 @@
-import { PrismaClient } from '@prisma/client'
+import prisma from '../lib/prisma'
 
-const prisma = new PrismaClient()
 
 const isTeamMember = async (teamId: string, userId: string) => {
   const member = await prisma.teamMember.findUnique({

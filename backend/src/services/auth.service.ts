@@ -1,9 +1,8 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-import { PrismaClient } from '@prisma/client'
+import prisma from '../lib/prisma'
 import { RegisterBody, LoginBody, AuthPayload } from '../types'
 
-const prisma = new PrismaClient()
 const SALT_ROUNDS = 10
 const JWT_EXPIRES_IN = '7d'
 

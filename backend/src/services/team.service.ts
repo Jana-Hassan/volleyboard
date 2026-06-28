@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import prisma from '../lib/prisma'
 
 export const createTeam = async (userId: string, name: string, logoUrl?: string) => {
   const team = await prisma.team.create({
