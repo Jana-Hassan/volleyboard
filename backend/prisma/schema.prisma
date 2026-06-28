@@ -8,38 +8,61 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
+  id           String       @id @default(uuid())
+  email        String       @unique
   passwordHash String
   name         String
-  createdAt    DateTime @default(now())
-  teams        Team[]
+  createdAt    DateTime     @default(now())
+  teamMembers  TeamMember[]
 }
 
 model Team {
-  id        String   @id @default(uuid())
-  userId    String
+  id        String       @id @default(uuid())
   name      String
   logoUrl   String?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+  members   TeamMember[]
   players   Player[]
   lineups   Lineup[]
   matches   Match[]
 }
 
+model TeamMember {
+  id       String   @id @default(uuid())
+  teamId   String
+  userId   String
+  joinedAt DateTime @default(now())
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+}
+
 model Player {
-  id            String         @id @default(uuid())
-  teamId        String
-  name          String
-  number        String
-  position      String
-  isLibero      Boolean        @default(false)
-  isActive      Boolean        @default(true)
-  team          Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  lineupSlots   LineupSlot[]
-  subsOut       Substitution[] @relation("PlayerOut")
-  subsIn        Substitution[] @relation("PlayerIn")
+  id          String             @id @default(uuid())
+  teamId      String
+  name        String
+  number      String
+  position    String
+  isLibero    Boolean            @default(false)
+  isActive    Boolean            @default(true)
+  team        Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  lineupSlots LineupSlot[]
+  subsOut     Substitution[]     @relation("PlayerOut")
+  subsIn      Substitution[]     @relation("PlayerIn")
+  events      MatchEvent[]
+  matchStats  PlayerMatchStats[]
+}
+
+model OpponentPlayer {
+  id         String              @id @default(uuid())
+  matchId    String
+  name       String?
+  jersey     Int
+  position   String?
+  match      Match               @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  events     MatchEvent[]
+  matchStats OpponentMatchStats[]
 }
 
 model Lineup {
@@ -64,16 +87,19 @@ model LineupSlot {
 }
 
 model Match {
-  id           String     @id @default(uuid())
-  teamId       String
-  lineupId     String
-  opponentName String
-  status       String     @default("pending")
-  startedAt    DateTime?
-  endedAt      DateTime?
-  team         Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  lineup       Lineup     @relation(fields: [lineupId], references: [id])
-  sets         MatchSet[]
+  id              String              @id @default(uuid())
+  teamId          String
+  lineupId        String
+  opponentName    String
+  status          String              @default("pending")
+  startedAt       DateTime?
+  endedAt         DateTime?
+  team            Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  lineup          Lineup              @relation(fields: [lineupId], references: [id])
+  sets            MatchSet[]
+  opponentPlayers OpponentPlayer[]
+  playerStats     PlayerMatchStats[]
+  opponentStats   OpponentMatchStats[]
 }
 
 model MatchSet {
@@ -86,11 +112,14 @@ model MatchSet {
   subCount               Int            @default(0)
   ourChallengesRemaining Int            @default(2)
   oppChallengesRemaining Int            @default(2)
+  ourTimeoutsRemaining   Int            @default(2)
+  oppTimeoutsRemaining   Int            @default(2)
   status                 String         @default("active")
   match                  Match          @relation(fields: [matchId], references: [id], onDelete: Cascade)
   rotations              Rotation[]
   substitutions          Substitution[]
   challenges             Challenge[]
+  timeouts               Timeout[]
   events                 MatchEvent[]
 }
 
@@ -128,11 +157,96 @@ model Challenge {
   set          MatchSet @relation(fields: [setId], references: [id], onDelete: Cascade)
 }
 
+model Timeout {
+  id          String   @id @default(uuid())
+  setId       String
+  calledBy    String
+  atScoreUs   Int
+  atScoreThem Int
+  calledAt    DateTime @default(now())
+  set         MatchSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+}
+
 model MatchEvent {
-  id         String   @id @default(uuid())
-  setId      String
-  eventType  String
-  payload    Json
-  occurredAt DateTime @default(now())
-  set        MatchSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+  id               String          @id @default(uuid())
+  setId            String
+  team             String
+  eventType        String
+  outcome          String
+  playerId         String?
+  opponentPlayerId String?
+  rotation         Int?
+  payload          Json            @default("{}")
+  occurredAt       DateTime        @default(now())
+  set              MatchSet        @relation(fields: [setId], references: [id], onDelete: Cascade)
+  player           Player?         @relation(fields: [playerId], references: [id])
+  opponentPlayer   OpponentPlayer? @relation(fields: [opponentPlayerId], references: [id])
+}
+
+model PlayerMatchStats {
+  id                  String  @id @default(uuid())
+  matchId             String
+  playerId            String
+  attackTotal         Int     @default(0)
+  attackKills         Int     @default(0)
+  attackErrors        Int     @default(0)
+  attackEfficiency    Float   @default(0)
+  serveTotal          Int     @default(0)
+  serveAces           Int     @default(0)
+  serveErrors         Int     @default(0)
+  serveEfficiency     Float   @default(0)
+  receptionTotal      Int     @default(0)
+  receptionPerfect    Int     @default(0)
+  receptionGood       Int     @default(0)
+  receptionErrors     Int     @default(0)
+  receptionEfficiency Float   @default(0)
+  blockTotal          Int     @default(0)
+  blockKills          Int     @default(0)
+  blockErrors         Int     @default(0)
+  blockTouches        Int     @default(0)
+  digTotal            Int     @default(0)
+  digPerfect          Int     @default(0)
+  digGood             Int     @default(0)
+  digErrors           Int     @default(0)
+  setTotal            Int     @default(0)
+  setPerfect          Int     @default(0)
+  setGood             Int     @default(0)
+  setErrors           Int     @default(0)
+  totalPoints         Int     @default(0)
+  match               Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player              Player  @relation(fields: [playerId], references: [id])
+
+  @@unique([matchId, playerId])
+}
+
+model OpponentMatchStats {
+  id                  String         @id @default(uuid())
+  matchId             String
+  opponentPlayerId    String
+  attackTotal         Int            @default(0)
+  attackKills         Int            @default(0)
+  attackErrors        Int            @default(0)
+  attackEfficiency    Float          @default(0)
+  serveTotal          Int            @default(0)
+  serveAces           Int            @default(0)
+  serveErrors         Int            @default(0)
+  serveEfficiency     Float          @default(0)
+  receptionTotal      Int            @default(0)
+  receptionPerfect    Int            @default(0)
+  receptionGood       Int            @default(0)
+  receptionErrors     Int            @default(0)
+  receptionEfficiency Float          @default(0)
+  blockTotal          Int            @default(0)
+  blockKills          Int            @default(0)
+  blockErrors         Int            @default(0)
+  blockTouches        Int            @default(0)
+  digTotal            Int            @default(0)
+  digPerfect          Int            @default(0)
+  digGood             Int            @default(0)
+  digErrors           Int            @default(0)
+  totalPoints         Int            @default(0)
+  match               Match          @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  opponentPlayer      OpponentPlayer @relation(fields: [opponentPlayerId], references: [id])
+
+  @@unique([matchId, opponentPlayerId])
 }
