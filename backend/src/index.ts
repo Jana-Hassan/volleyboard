@@ -6,6 +6,7 @@ import dotenv from 'dotenv'
 import authRoutes from './routes/auth.routes'
 import teamRoutes from './routes/team.routes'
 import playerRoutes from './routes/player.routes'
+import lineupRoutes from './routes/lineup.routes'
 
 
 dotenv.config()
@@ -25,7 +26,7 @@ app.use(express.json())
 app.use('/api/v1/auth', authRoutes)
 app.use('/api/v1/teams', teamRoutes)
 app.use('/api/v1/teams/:teamId/players', playerRoutes)
-
+app.use('/api/v1/teams/:teamId/lineups', lineupRoutes)
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', project: 'VolleyBoard' })
