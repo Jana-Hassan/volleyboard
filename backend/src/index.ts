@@ -7,7 +7,8 @@ import authRoutes from './routes/auth.routes'
 import teamRoutes from './routes/team.routes'
 import playerRoutes from './routes/player.routes'
 import lineupRoutes from './routes/lineup.routes'
-
+import matchRoutes from './routes/match.routes'
+import { errorHandler } from './middleware/error'
 
 dotenv.config()
 
@@ -27,10 +28,13 @@ app.use('/api/v1/auth', authRoutes)
 app.use('/api/v1/teams', teamRoutes)
 app.use('/api/v1/teams/:teamId/players', playerRoutes)
 app.use('/api/v1/teams/:teamId/lineups', lineupRoutes)
+app.use('/api/v1/teams/:teamId/matches', matchRoutes)
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', project: 'VolleyBoard' })
 })
+
+app.use(errorHandler)
 
 io.on('connection', (socket) => {
   console.log(`Client connected: ${socket.id}`)
