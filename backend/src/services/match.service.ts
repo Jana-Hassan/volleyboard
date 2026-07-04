@@ -95,13 +95,6 @@ export const startMatch = async (matchId: string, userId: string) => {
     'us'
   )
 
-  const violations = validateOverlap(rotationState.positions)
-  if (violations.length > 0) {
-    throw new GuardError(
-      `Overlap violations in starting lineup: ${violations.map(v => v.message).join(', ')}`
-    )
-  }
-
   const result = await prisma.$transaction(async (tx) => {
     const updatedMatch = await tx.match.update({
       where: { id: matchId },
@@ -112,7 +105,8 @@ export const startMatch = async (matchId: string, userId: string) => {
       data: {
         matchId,
         setNumber: 1,
-        status: 'active'
+        status: 'active',
+        servingTeam: 'us'
       }
     })
 
@@ -156,14 +150,18 @@ export const scorePoint = async (
 
   const lastRotation = set.rotations[0]
   const currentPositions = lastRotation.positions as any
+  const currentServingTeam = set.servingTeam as 'us' | 'opponent'
+
 
   const currentState: RotationState = {
     positions: currentPositions,
     currentRotation: set.currentRotation,
-    servingTeam: scorer === 'us' ? 'us' : 'opponent'
+    servingTeam: currentServingTeam
   }
 
-  const isSideOut = determineSideOut(scorer, currentState.servingTeam)
+  const isSideOut = determineSideOut(scorer, currentServingTeam)
+  const newServingTeam: 'us' | 'opponent' = scorer === 'us' ? 'us' : 'opponent'
+
   let newRotationState = currentState
   let newRotation = set.currentRotation
 
@@ -172,12 +170,14 @@ export const scorePoint = async (
       where: { id: setId },
       data: {
         ourScore: newOurScore,
-        opponentScore: newOppScore
+        opponentScore: newOppScore,
+        servingTeam: newServingTeam
       }
     })
 
     if (isSideOut) {
       newRotationState = rotate(currentState)
+      newRotationState = { ...newRotationState, servingTeam: newServingTeam }
       newRotation = newRotationState.currentRotation
 
       await tx.rotation.create({
@@ -204,7 +204,8 @@ export const scorePoint = async (
         payload: {
           ourScore: newOurScore,
           opponentScore: newOppScore,
-          isSideOut
+          isSideOut,
+          servingTeam: newServingTeam
         }
       }
     })
@@ -248,6 +249,7 @@ export const scorePoint = async (
       currentRotation: newRotation,
       rotationState: newRotationState,
       isSideOut,
+      servingTeam: newServingTeam,
       setOver,
       matchOver,
       ourSetsWon,
@@ -393,7 +395,8 @@ export const startNextSet = async (matchId: string, userId: string) => {
       data: {
         matchId,
         setNumber: nextSetNumber,
-        status: 'active'
+        status: 'active',
+        servingTeam
       }
     })
 

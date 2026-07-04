@@ -110,6 +110,7 @@ model MatchSet {
   ourScore               Int            @default(0)
   opponentScore          Int            @default(0)
   currentRotation        Int            @default(1)
+  servingTeam            String         @default("us")
   subCount               Int            @default(0)
   ourChallengesRemaining Int            @default(2)
   oppChallengesRemaining Int            @default(2)
