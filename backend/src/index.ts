@@ -9,12 +9,13 @@ import playerRoutes from './routes/player.routes'
 import lineupRoutes from './routes/lineup.routes'
 import matchRoutes from './routes/match.routes'
 import { errorHandler } from './middleware/error'
+import { initializeSocket } from './socket/index'
 
 dotenv.config()
 
 const app = express()
 const httpServer = createServer(app)
-const io = new Server(httpServer, {
+export const io = new Server(httpServer, {
   cors: {
     origin: 'http://localhost:5173',
     methods: ['GET', 'POST']
@@ -36,17 +37,10 @@ app.get('/health', (req, res) => {
 
 app.use(errorHandler)
 
-io.on('connection', (socket) => {
-  console.log(`Client connected: ${socket.id}`)
-  socket.on('disconnect', () => {
-    console.log(`Client disconnected: ${socket.id}`)
-  })
-})
+initializeSocket(io)
 
 const PORT = process.env.PORT || 3000
 
 httpServer.listen(PORT, () => {
   console.log(`VolleyBoard server running on port ${PORT}`)
 })
-
-export { io }

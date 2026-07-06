@@ -1,3 +1,4 @@
+import { io } from '../index'
 import prisma from '../lib/prisma'
 import {
   matchTransition,
@@ -10,7 +11,6 @@ import {
 import {
   initializeRotation,
   rotate,
-  validateOverlap,
   serializePositions,
   RotationState
 } from './rotation.service'
@@ -121,6 +121,13 @@ export const startMatch = async (matchId: string, userId: string) => {
     return { match: updatedMatch, set: firstSet, rotationState }
   })
 
+  // broadcast AFTER transaction succeeds
+  io.to(`match:${matchId}`).emit('match_started', {
+    matchId,
+    set: result.set,
+    rotationState: result.rotationState
+  })
+
   return result
 }
 
@@ -151,7 +158,6 @@ export const scorePoint = async (
   const lastRotation = set.rotations[0]
   const currentPositions = lastRotation.positions as any
   const currentServingTeam = set.servingTeam as 'us' | 'opponent'
-
 
   const currentState: RotationState = {
     positions: currentPositions,
@@ -256,6 +262,38 @@ export const scorePoint = async (
       opponentSetsWon
     }
   })
+
+  // broadcast AFTER transaction succeeds
+  io.to(`match:${set.matchId}`).emit('score_updated', {
+    ourScore: result.ourScore,
+    opponentScore: result.opponentScore,
+    currentRotation: result.currentRotation,
+    rotationState: result.rotationState,
+    isSideOut: result.isSideOut,
+    servingTeam: result.servingTeam,
+    setOver: result.setOver,
+    matchOver: result.matchOver,
+    ourSetsWon: result.ourSetsWon,
+    opponentSetsWon: result.opponentSetsWon
+  })
+
+  if (result.setOver) {
+    io.to(`match:${set.matchId}`).emit('set_finished', {
+      setNumber: set.setNumber,
+      ourScore: result.ourScore,
+      opponentScore: result.opponentScore,
+      ourSetsWon: result.ourSetsWon,
+      opponentSetsWon: result.opponentSetsWon
+    })
+  }
+
+  if (result.matchOver) {
+    io.to(`match:${set.matchId}`).emit('match_finished', {
+      ourSetsWon: result.ourSetsWon,
+      opponentSetsWon: result.opponentSetsWon,
+      winner: result.ourSetsWon === 3 ? 'us' : 'opponent'
+    })
+  }
 
   return result
 }
@@ -374,9 +412,7 @@ export const startNextSet = async (matchId: string, userId: string) => {
   }
 
   const nextSetNumber = lastSet.setNumber + 1
-
   const starters = match.lineup.slots.filter(s => s.role === 'starter')
-
   const weWonLastSet = lastSet.ourScore > lastSet.opponentScore
   const servingTeam: 'us' | 'opponent' = weWonLastSet ? 'us' : 'opponent'
 
@@ -411,6 +447,13 @@ export const startNextSet = async (matchId: string, userId: string) => {
     return { set: newSet, rotationState }
   })
 
+  // broadcast AFTER transaction succeeds
+  io.to(`match:${matchId}`).emit('next_set_started', {
+    setNumber: nextSetNumber,
+    servingTeam,
+    rotationState: result.rotationState
+  })
+
   return result
 }
 
@@ -427,6 +470,11 @@ export const endMatch = async (matchId: string, userId: string) => {
   const updatedMatch = await prisma.match.update({
     where: { id: matchId },
     data: { status: newStatus, endedAt: new Date() }
+  })
+
+  io.to(`match:${matchId}`).emit('match_ended', {
+    matchId,
+    status: 'completed'
   })
 
   return updatedMatch
