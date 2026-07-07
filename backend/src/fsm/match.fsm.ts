@@ -1,6 +1,22 @@
+import {
+  MAX_SUBS_PER_SET,
+  MAX_CHALLENGES_PER_SET,
+  MAX_TIMEOUTS_PER_SET,
+  REGULAR_SET_TARGET,
+  DECIDING_SET_TARGET,
+  MIN_WIN_DIFF
+} from '../lib/volleyball.constants'
+
 export type MatchStatus = 'pending' | 'live' | 'completed'
 export type SetStatus = 'active' | 'finished'
-export type RallyStatus = 'serving' | 'in_rally' | 'point_scored' | 'rotating' | 'timeout' | 'substitution' | 'challenge'
+export type RallyStatus =
+  | 'serving'
+  | 'in_rally'
+  | 'point_scored'
+  | 'rotating'
+  | 'timeout'
+  | 'substitution'
+  | 'challenge'
 
 export type MatchEvent =
   | 'START_MATCH'
@@ -48,9 +64,9 @@ const setTransitions: Record<SetStatus, Partial<Record<SetEvent, SetStatus>>> = 
 
 const rallyTransitions: Record<RallyStatus, Partial<Record<RallyEvent, RallyStatus>>> = {
   serving: {
-    SERVE:          'in_rally',
-    CALL_TIMEOUT:   'timeout',
-    REQUEST_SUB:    'substitution'
+    SERVE:        'in_rally',
+    CALL_TIMEOUT: 'timeout',
+    REQUEST_SUB:  'substitution'
   },
   in_rally: {
     POINT_US:       'point_scored',
@@ -58,17 +74,17 @@ const rallyTransitions: Record<RallyStatus, Partial<Record<RallyEvent, RallyStat
     CALL_CHALLENGE: 'challenge'
   },
   point_scored: {
-    SIDE_OUT:       'rotating',
-    NO_SIDE_OUT:    'serving'
+    SIDE_OUT:    'rotating',
+    NO_SIDE_OUT: 'serving'
   },
   rotating: {
-    ROTATION_DONE:  'serving'
+    ROTATION_DONE: 'serving'
   },
   timeout: {
-    TIMEOUT_END:    'serving'
+    TIMEOUT_END: 'serving'
   },
   substitution: {
-    SUB_CONFIRMED:  'serving'
+    SUB_CONFIRMED: 'serving'
   },
   challenge: {
     CHALLENGE_RESULT: 'serving'
@@ -108,13 +124,13 @@ export const setTransition = (
 
   if (event === 'END_SET') {
     const { ourScore = 0, opponentScore = 0, setNumber = 1 } = ctx
-    const targetScore = setNumber === 5 ? 15 : 25
+    const targetScore = setNumber === 5 ? DECIDING_SET_TARGET : REGULAR_SET_TARGET
     const diff = Math.abs(ourScore - opponentScore)
     const maxScore = Math.max(ourScore, opponentScore)
 
-    if (maxScore < targetScore || diff < 2) {
+    if (maxScore < targetScore || diff < MIN_WIN_DIFF) {
       throw new GuardError(
-        `Set cannot end: need ${targetScore} points with 2+ point lead (current: ${ourScore}-${opponentScore})`
+        `Set cannot end: need ${targetScore} points with ${MIN_WIN_DIFF}+ point lead (current: ${ourScore}-${opponentScore})`
       )
     }
   }
@@ -131,8 +147,8 @@ export const rallyTransition = (
   if (!next) throw new InvalidTransitionError(current, event)
 
   if (event === 'REQUEST_SUB') {
-    if ((ctx.subCount ?? 0) >= 6) {
-      throw new GuardError('Substitution limit reached (max 6 per set)')
+    if ((ctx.subCount ?? 0) >= MAX_SUBS_PER_SET) {
+      throw new GuardError(`Substitution limit reached (max ${MAX_SUBS_PER_SET} per set)`)
     }
   }
 
@@ -161,13 +177,20 @@ export const checkMatchEnd = (ourSetsWon: number, opponentSetsWon: number): bool
   return ourSetsWon === 3 || opponentSetsWon === 3
 }
 
-export const checkSetEnd = (ourScore: number, opponentScore: number, setNumber: number): boolean => {
-  const targetScore = setNumber === 5 ? 15 : 25
+export const checkSetEnd = (
+  ourScore: number,
+  opponentScore: number,
+  setNumber: number
+): boolean => {
+  const targetScore = setNumber === 5 ? DECIDING_SET_TARGET : REGULAR_SET_TARGET
   const maxScore = Math.max(ourScore, opponentScore)
   const diff = Math.abs(ourScore - opponentScore)
-  return maxScore >= targetScore && diff >= 2
+  return maxScore >= targetScore && diff >= MIN_WIN_DIFF
 }
 
-export const determineSideOut = (scorer: 'us' | 'opponent', servingTeam: 'us' | 'opponent'): boolean => {
+export const determineSideOut = (
+  scorer: 'us' | 'opponent',
+  servingTeam: 'us' | 'opponent'
+): boolean => {
   return scorer !== servingTeam
 }

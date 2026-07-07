@@ -1,3 +1,10 @@
+import {
+  ROTATION_MAP,
+  BACK_ROW_POSITIONS,
+  FRONT_BACK_RULES,
+  LEFT_RIGHT_RULES
+} from '../lib/volleyball.constants'
+
 export interface CourtPosition {
   playerId: string
   playerName: string
@@ -19,28 +26,6 @@ export interface OverlapViolation {
   positions: [number, number]
   message: string
 }
-
-const ROTATION_MAP: Record<number, number> = {
-  1: 6,
-  2: 1,
-  3: 2,
-  4: 3,
-  5: 4,
-  6: 5
-}
-
-const FRONT_BACK_RULES: { front: number; back: number }[] = [
-  { front: 2, back: 1 },
-  { front: 3, back: 6 },
-  { front: 4, back: 5 }
-]
-
-const LEFT_RIGHT_RULES: { left: number; right: number }[] = [
-  { left: 4, right: 3 },
-  { left: 3, right: 2 },
-  { left: 5, right: 6 },
-  { left: 6, right: 1 }
-]
 
 export const initializeRotation = (
   slots: {
@@ -89,13 +74,10 @@ export const validateOverlap = (
   const violations: OverlapViolation[] = []
 
   for (const rule of FRONT_BACK_RULES) {
-    const frontPos = rule.front
-    const backPos = rule.back
-    if (!positions[frontPos] || !positions[backPos]) continue
-
+    if (!positions[rule.front] || !positions[rule.back]) continue
     violations.push({
-      positions: [frontPos, backPos],
-      message: `Position ${frontPos} must be in front of position ${backPos} — check player overlap`
+      positions: [rule.front, rule.back],
+      message: `Position ${rule.front} must be in front of position ${rule.back}`
     })
   }
 
@@ -121,8 +103,7 @@ export const applyLiberoSwap = (
     throw new Error('PLAYER_NOT_FOUND')
   }
 
-  const backRowPositions = [1, 5, 6]
-  if (!backRowPositions.includes(replacedPosition)) {
+  if (!BACK_ROW_POSITIONS.includes(replacedPosition)) {
     throw new Error('LIBERO_FRONT_ROW')
   }
 

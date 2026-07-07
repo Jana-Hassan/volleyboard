@@ -1,7 +1,5 @@
 import prisma from '../lib/prisma'
-
-const VALID_ROLES = ['starter', 'bench', 'reserved']
-const VALID_ROTATION_POSITIONS = [1, 2, 3, 4, 5, 6]
+import { VALID_ROLES, VALID_ROTATION_POSITIONS } from '../lib/volleyball.constants'
 
 const checkCoachOrManager = async (teamId: string, userId: string) => {
   const member = await prisma.teamMember.findUnique({

@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma'
+import { VALID_MEMBER_ROLES } from '../lib/volleyball.constants'
 
 export const createTeam = async (userId: string, name: string, logoUrl?: string) => {
   const team = await prisma.team.create({
@@ -139,9 +140,9 @@ export const inviteMember = async (
 
   if (!member) throw new Error('FORBIDDEN')
   if (member.role !== 'manager') throw new Error('FORBIDDEN')
-
-  const validRoles = ['coach', 'assistant', 'analyst', 'trainer']
-  if (!validRoles.includes(role)) throw new Error('INVALID_ROLE')
+  
+if (!VALID_MEMBER_ROLES.includes(role)) throw new Error('INVALID_ROLE')
+  
 
   const invitee = await prisma.user.findUnique({
     where: { email: inviteeEmail }
