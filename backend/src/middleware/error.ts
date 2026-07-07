@@ -30,6 +30,11 @@ const ERROR_MAP: Record<string, { status: number; message?: string }> = {
   PREVIOUS_SET_NOT_FINISHED:   { status: 409, message: 'Previous set is not finished yet' },
   MATCH_ALREADY_OVER:          { status: 409, message: 'Match is already over' },
   LIBERO_FRONT_ROW:            { status: 400, message: 'Libero can only swap with back row players' },
+  INVALID_EVENT_TYPE:        { status: 400, message: 'Invalid event type. Must be attack, serve, reception, block, dig or set' },
+  INVALID_OUTCOME:           { status: 400, message: 'Invalid outcome for this event type' },
+  OPPONENT_PLAYER_NOT_FOUND: { status: 404, message: 'Opponent player not found' },
+
+
 }
 
 export const errorHandler = (
