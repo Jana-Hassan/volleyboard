@@ -7,7 +7,8 @@ import {
   getState,
   finishSet,
   nextSet,
-  finish
+  finish,
+  getAll
 } from '../controllers/match.controller'
 
 const router = Router({ mergeParams: true })
@@ -20,5 +21,6 @@ router.post('/:matchId/next-set', nextSet)
 router.post('/:matchId/end', finish)
 router.post('/sets/:setId/point', score)
 router.post('/sets/:setId/end', finishSet)
+router.get('/', getAll)
 
 export default router

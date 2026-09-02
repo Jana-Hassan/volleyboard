@@ -92,6 +92,8 @@ model Match {
   teamId          String
   lineupId        String
   opponentName    String
+  competition     String              @default("Friendly")
+  scheduledAt     DateTime?
   status          String              @default("pending")
   startedAt       DateTime?
   endedAt         DateTime?

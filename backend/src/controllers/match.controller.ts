@@ -1,5 +1,6 @@
 import { Response, NextFunction } from 'express'
-import { AuthRequest } from '../types'
+import type { AuthRequest } from '../types'
+import prisma from '../lib/prisma'
 import {
   createMatch,
   startMatch,
@@ -13,12 +14,17 @@ import {
 export const create = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { teamId } = req.params as { teamId: string }
-    const { lineupId, opponentName } = req.body
+    const { lineupId, opponentName, competition, scheduledAt } = req.body
     if (!lineupId || !opponentName) {
       res.status(400).json({ error: 'lineupId and opponentName are required' })
       return
     }
-    const match = await createMatch(teamId, req.user!.userId, { lineupId, opponentName })
+    const match = await createMatch(teamId, req.user!.userId, {
+      lineupId,
+      opponentName,
+      competition,
+      scheduledAt
+    })
     res.status(201).json(match)
   } catch (error) { next(error) }
 }
@@ -73,5 +79,22 @@ export const finish = async (req: AuthRequest, res: Response, next: NextFunction
     const { matchId } = req.params as { matchId: string }
     const result = await endMatch(matchId, req.user!.userId)
     res.status(200).json(result)
+  } catch (error) { next(error) }
+}
+
+export const getAll = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { teamId } = req.params as { teamId: string }
+    const matches = await prisma.match.findMany({
+      where: { teamId },
+      include: {
+        lineup: true,
+        sets: {
+          orderBy: { setNumber: 'asc' }
+        }
+      },
+      orderBy: { scheduledAt: 'desc' }
+    })
+    res.status(200).json(matches)
   } catch (error) { next(error) }
 }

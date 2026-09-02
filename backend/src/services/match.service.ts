@@ -15,6 +15,14 @@ import {
   RotationState
 } from './rotation.service'
 
+const checkManagerOrAssistant = async (teamId: string, userId: string): Promise<void> => {
+  const member = await prisma.teamMember.findUnique({
+    where: { teamId_userId: { teamId, userId } }
+  })
+  if (!member) throw new Error('FORBIDDEN')
+  if (!['manager', 'assistant'].includes(member.role)) throw new Error('FORBIDDEN')
+}
+
 const checkCoachOrManager = async (teamId: string, userId: string): Promise<void> => {
   const member = await prisma.teamMember.findUnique({
     where: { teamId_userId: { teamId, userId } }
@@ -33,9 +41,14 @@ const checkMembership = async (teamId: string, userId: string): Promise<void> =>
 export const createMatch = async (
   teamId: string,
   userId: string,
-  data: { lineupId: string; opponentName: string }
+  data: {
+    lineupId: string
+    opponentName: string
+    competition?: string
+    scheduledAt?: string
+  }
 ) => {
-  await checkCoachOrManager(teamId, userId)
+  await checkManagerOrAssistant(teamId, userId)
 
   const lineup = await prisma.lineup.findFirst({
     where: { id: data.lineupId, teamId }
@@ -47,6 +60,8 @@ export const createMatch = async (
       teamId,
       lineupId: data.lineupId,
       opponentName: data.opponentName,
+      competition: data.competition ?? 'Friendly',
+      scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : null,
       status: 'pending'
     },
     include: {
@@ -121,7 +136,6 @@ export const startMatch = async (matchId: string, userId: string) => {
     return { match: updatedMatch, set: firstSet, rotationState }
   })
 
-  // broadcast AFTER transaction succeeds
   io.to(`match:${matchId}`).emit('match_started', {
     matchId,
     set: result.set,
@@ -263,7 +277,6 @@ export const scorePoint = async (
     }
   })
 
-  // broadcast AFTER transaction succeeds
   io.to(`match:${set.matchId}`).emit('score_updated', {
     ourScore: result.ourScore,
     opponentScore: result.opponentScore,
@@ -346,6 +359,8 @@ export const getMatchState = async (matchId: string, userId: string) => {
     matchId: match.id,
     status: match.status,
     opponentName: match.opponentName,
+    competition: match.competition,
+    scheduledAt: match.scheduledAt,
     ourSetsWon,
     opponentSetsWon,
     matchOver,
@@ -447,7 +462,6 @@ export const startNextSet = async (matchId: string, userId: string) => {
     return { set: newSet, rotationState }
   })
 
-  // broadcast AFTER transaction succeeds
   io.to(`match:${matchId}`).emit('next_set_started', {
     setNumber: nextSetNumber,
     servingTeam,
