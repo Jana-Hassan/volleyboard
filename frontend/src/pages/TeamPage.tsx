@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
 import api from '../lib/api'
 import type { Team, Player, Lineup } from '../types'
 import Navbar from '../components/Navbar'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 
 interface Match {
   id: string
@@ -24,13 +25,17 @@ interface Match {
 const TeamPage = () => {
   const { teamId } = useParams<{ teamId: string }>()
   const navigate = useNavigate()
+  const { user } = useAuth()
 
   const [team, setTeam] = useState<Team | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [lineups, setLineups] = useState<Lineup[]>([])
   const [matches, setMatches] = useState<Match[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'roster' | 'matches' | 'lineups' | 'staff'>('roster')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState<'roster' | 'matches' | 'lineups' | 'staff'>(
+    (searchParams.get('tab') as any) ?? 'roster'
+  )
   const [competitionFilter, setCompetitionFilter] = useState('All')
 
   useEffect(() => {
@@ -64,6 +69,11 @@ const TeamPage = () => {
   }
 
   if (!team) return null
+    
+  const userRole = team.members.find(m => m.userId === user?.id)?.role
+
+  const canManageMatches = userRole === 'manager' || userRole === 'assistant'
+  const canManageLineups = userRole === 'manager' || userRole === 'coach'
 
   const tabs = ['roster', 'matches', 'lineups', 'staff'] as const
 
@@ -77,8 +87,22 @@ const TeamPage = () => {
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return 'Date not set'
     return new Date(dateStr).toLocaleDateString('en-GB', {
-      day: 'numeric', month: 'short', year: 'numeric'
+      day: 'numeric', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
     })
+  }
+
+  const getCompetitionStyle = (competition: string) => {
+    const styles: Record<string, string> = {
+      'VNL': 'text-[#2A835F] border-[#2A835F]',
+      'World Championship': 'text-yellow-500 border-yellow-500',
+      'Olympics': 'text-yellow-500 border-yellow-500',
+      'Olympic Qualifier': 'text-yellow-500 border-yellow-500',
+      'Champions League': 'text-blue-400 border-blue-400',
+      'AVC Championship': 'text-blue-400 border-blue-400',
+      'EuroVolley': 'text-blue-400 border-blue-400',
+    }
+    return styles[competition] ?? 'text-[#4a6b6b] border-[#4a6b6b]'
   }
 
   return (
@@ -97,27 +121,24 @@ const TeamPage = () => {
               {players.length} players · {team.members.length} staff
             </p>
           </div>
-          <button
-            onClick={() => navigate(`/teams/${teamId}/matches/new`)}
-            className="bg-[#2A835F] text-white px-4 py-2 rounded text-sm font-medium hover:bg-[#235a45] transition-colors"
-          >
-            + New Match
-          </button>
         </div>
 
         <div className="flex gap-6 border-b border-[#0f2d30] mb-6">
           {tabs.map(tab => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`pb-3 text-sm uppercase tracking-widest transition-colors ${
-                activeTab === tab
-                  ? 'text-white border-b-2 border-[#2A835F]'
-                  : 'text-[#4a6b6b] hover:text-white'
-              }`}
-            >
-              {tab}
-            </button>
+              onClick={() => {
+    setActiveTab(tab)
+    setSearchParams({ tab })
+  }}
+  className={`pb-3 text-sm uppercase tracking-widest transition-colors ${
+    activeTab === tab
+      ? 'text-white border-b-2 border-[#2A835F]'
+      : 'text-[#4a6b6b] hover:text-white'
+  }`}
+>
+  {tab}
+</button>
           ))}
         </div>
 
@@ -127,19 +148,21 @@ const TeamPage = () => {
             {players.map(player => (
               <div
                 key={player.id}
-                className="flex items-center gap-3 border border-[#0f2d30] bg-[#0a1a1c] rounded px-4 py-3"
+                onClick={() => navigate(`/teams/${teamId}/players/${player.id}`)}
+                className="flex items-center gap-3 border border-[#0f2d30] bg-[#0a1a1c] rounded px-4 py-3 cursor-pointer hover:border-[#2A835F] transition-colors group"
               >
                 <span className="text-[#2A835F] font-bold text-sm w-6 shrink-0">
                   #{player.number}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <span className="text-white text-sm font-medium truncate block">
+                  <span className="text-white text-sm font-medium truncate block group-hover:text-[#8BBB92] transition-colors">
                     {player.name}
                   </span>
                   <span className="text-[#4a6b6b] text-xs uppercase tracking-wider">
                     {player.position}{player.isLibero ? ' · L' : ''}
                   </span>
                 </div>
+                <span className="text-[#4a6b6b] group-hover:text-[#2A835F] transition-colors">→</span>
               </div>
             ))}
           </div>
@@ -148,33 +171,45 @@ const TeamPage = () => {
         {/* MATCHES TAB */}
         {activeTab === 'matches' && (
           <div>
-            {matches.length > 0 && (
-              <div className="flex gap-2 mb-6 flex-wrap">
-                {['All', ...Array.from(new Set(matches.map(m => m.competition)))].map(comp => (
-                  <button
-                    key={comp}
-                    onClick={() => setCompetitionFilter(comp)}
-                    className={`px-3 py-1 rounded text-xs uppercase tracking-widest transition-colors ${
-                      competitionFilter === comp
-                        ? 'bg-[#2A835F] text-white'
-                        : 'border border-[#0f2d30] text-[#4a6b6b] hover:text-white hover:border-[#2A835F]'
-                    }`}
-                  >
-                    {comp}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="flex items-center justify-between mb-6">
+              {matches.length > 0 && (
+                <div className="flex gap-2 flex-wrap">
+                  {['All', ...Array.from(new Set(matches.map(m => m.competition)))].map(comp => (
+                    <button
+                      key={comp}
+                      onClick={() => setCompetitionFilter(comp)}
+                      className={`px-3 py-1 rounded text-xs uppercase tracking-widest transition-colors ${
+                        competitionFilter === comp
+                          ? 'bg-[#2A835F] text-white'
+                          : 'border border-[#0f2d30] text-[#4a6b6b] hover:text-white hover:border-[#2A835F]'
+                      }`}
+                    >
+                      {comp}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {canManageMatches && (
+                <button
+                  onClick={() => navigate(`/teams/${teamId}/matches/new`)}
+                  className="bg-[#2A835F] text-white px-4 py-2 rounded text-sm font-medium hover:bg-[#235a45] transition-colors ml-auto"
+                >
+                  + New Match
+                </button>
+              )}
+            </div>
 
             {matches.length === 0 ? (
               <div className="border border-[#0f2d30] rounded p-10 text-center">
-                <p className="text-[#4a6b6b] text-sm">No matches yet.</p>
-                <button
-                  onClick={() => navigate(`/teams/${teamId}/matches/new`)}
-                  className="mt-4 text-[#2A835F] text-sm hover:text-[#8BBB92] transition-colors"
-                >
-                  Schedule your first match →
-                </button>
+                <p className="text-[#4a6b6b] text-sm">No matches scheduled yet.</p>
+                {canManageMatches && (
+                  <button
+                    onClick={() => navigate(`/teams/${teamId}/matches/new`)}
+                    className="mt-4 text-[#2A835F] text-sm hover:text-[#8BBB92] transition-colors"
+                  >
+                    Schedule your first match →
+                  </button>
+                )}
               </div>
             ) : (
               <div className="space-y-8">
@@ -212,7 +247,7 @@ const TeamPage = () => {
                                   <p className="text-white text-sm font-medium group-hover:text-[#8BBB92] transition-colors">
                                     vs {match.opponentName}
                                   </p>
-                                  <span className="text-xs text-[#4a6b6b] border border-[#0f2d30] px-2 py-0.5 rounded uppercase tracking-wider">
+                                  <span className={`text-xs border px-2 py-0.5 rounded uppercase tracking-wider ${getCompetitionStyle(match.competition)}`}>
                                     {match.competition}
                                   </span>
                                 </div>
@@ -262,20 +297,22 @@ const TeamPage = () => {
         {/* LINEUPS TAB */}
         {activeTab === 'lineups' && (
           <div>
-            <div className="flex justify-end mb-4">
-              <button
-                onClick={() => navigate(`/teams/${teamId}/lineups/new`)}
-                className="border border-[#2A835F] text-[#2A835F] px-4 py-2 rounded text-sm hover:bg-[#2A835F] hover:text-white transition-colors"
-              >
-                + New Lineup
-              </button>
-            </div>
+            {canManageLineups && (
+              <div className="flex justify-end mb-4">
+                <button
+                  onClick={() => navigate(`/teams/${teamId}/lineups/new`)}
+                  className="border border-[#2A835F] text-[#2A835F] px-4 py-2 rounded text-sm hover:bg-[#2A835F] hover:text-white transition-colors"
+                >
+                  + New Lineup
+                </button>
+              </div>
+            )}
             {lineups.length === 0 ? (
               <div className="border border-[#0f2d30] rounded p-10 text-center">
                 <p className="text-[#4a6b6b] text-sm">No lineups yet.</p>
               </div>
             ) : (
-              <div className="grid gap-2">
+              <div className="grid gap-2 max-w-2xl">
                 {lineups.map(lineup => (
                   <div
                     key={lineup.id}
@@ -300,16 +337,13 @@ const TeamPage = () => {
 
         {/* STAFF TAB */}
         {activeTab === 'staff' && (
-          <div className="grid gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {team.members.map(member => (
               <div
                 key={member.id}
-                className="flex items-center justify-between border border-[#0f2d30] bg-[#0a1a1c] rounded px-5 py-3"
+                className="flex items-center justify-between border border-[#0f2d30] bg-[#0a1a1c] rounded px-4 py-2.5"
               >
-                <div>
-                  <p className="text-white text-sm font-medium">{member.user.name}</p>
-                  <p className="text-[#4a6b6b] text-xs mt-0.5">{member.user.email}</p>
-                </div>
+                <p className="text-white text-sm font-medium">{member.user.name}</p>
                 <span className="text-xs uppercase tracking-widest text-[#2A835F]">
                   {member.role}
                 </span>

@@ -76,17 +76,11 @@ const DashboardPage = () => {
                   <h3 className="text-white font-medium group-hover:text-[#8BBB92] transition-colors">
                     {team.name}
                   </h3>
-                  <div className="flex items-center gap-4 mt-2">
-                    <span className="text-[#4a6b6b] text-xs">
-                      {team._count?.players ?? 0} players
-                    </span>
-                    <span className="text-[#4a6b6b] text-xs">
-                      {team.members.length} staff
-                    </span>
-                    <span className="text-[#4a6b6b] text-xs capitalize">
-                      {team.members.find(m => m.user.name === user?.name)?.role ?? 'member'}
-                    </span>
-                  </div>
+                  <p className="text-[#4a6b6b] text-xs mt-2">
+  {team._count?.players ?? 0} players · {team.members.length} staff
+</p> 
+              
+              
                 </div>
                 <span className="text-[#4a6b6b] text-lg group-hover:text-[#2A835F] transition-colors">
                   →
