@@ -1,0 +1,6 @@
+-- AlterTable
+ALTER TABLE "Lineup" ADD COLUMN     "lastEditedById" TEXT,
+ADD COLUMN     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+-- AddForeignKey
+ALTER TABLE "Lineup" ADD CONSTRAINT "Lineup_lastEditedById_fkey" FOREIGN KEY ("lastEditedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;

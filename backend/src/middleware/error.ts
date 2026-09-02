@@ -33,6 +33,10 @@ const ERROR_MAP: Record<string, { status: number; message?: string }> = {
   INVALID_EVENT_TYPE:        { status: 400, message: 'Invalid event type. Must be attack, serve, reception, block, dig or set' },
   INVALID_OUTCOME:           { status: 400, message: 'Invalid outcome for this event type' },
   OPPONENT_PLAYER_NOT_FOUND: { status: 404, message: 'Opponent player not found' },
+  INVALID_ROTATION_POSITION:  { status: 400, message: 'Rotation position must be between 1 and 6' },
+INVALID_SETTER_COUNT_5_1:   { status: 400, message: '5-1 system requires exactly 1 setter in the starting six' },
+INVALID_SETTER_COUNT_6_2:   { status: 400, message: 'This system requires exactly 2 setters in the starting six' },
+LINEUP_IN_USE:              { status: 409, message: 'Cannot delete a lineup that is used by a match' },
 
 
 }
