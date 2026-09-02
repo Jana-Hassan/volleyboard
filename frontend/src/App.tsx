@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider } from './store/AuthContext.tsx'
-import { useAuth } from './hooks/useAuth.ts'
+import { AuthProvider } from './store/AuthContext'
+import { useAuth } from './hooks/useAuth'
 
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
@@ -8,6 +8,7 @@ import DashboardPage from './pages/DashboardPage'
 import TeamPage from './pages/TeamPage'
 import LineupPage from './pages/LineupPage'
 import MatchPage from './pages/MatchPage'
+import NewMatchPage from './pages/NewMatchPage'
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth()
@@ -48,10 +49,18 @@ const AppRoutes = () => {
         }
       />
       <Route
-        path="/teams/:teamId"
+        path="/teams/:teamId/matches/new"
         element={
           <ProtectedRoute>
-            <TeamPage />
+            <NewMatchPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/teams/:teamId/lineups/new"
+        element={
+          <ProtectedRoute>
+            <LineupPage />
           </ProtectedRoute>
         }
       />
@@ -60,6 +69,14 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <LineupPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/teams/:teamId"
+        element={
+          <ProtectedRoute>
+            <TeamPage />
           </ProtectedRoute>
         }
       />
