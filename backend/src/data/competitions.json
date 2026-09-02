@@ -1,0 +1,31 @@
+{
+  "international": [
+    "VNL",
+    "World Championship",
+    "World Championship Qualifier",
+    "Olympics",
+    "Olympic Qualifier",
+    "AVC Championship",
+    "EuroVolley",
+    "NORCECA Championship",
+    "CSV Championship",
+    "CAVB Championship",
+    "CEV Cup",
+    "Champions League"
+  ],
+  "club": [
+    "SuperLega",
+    "PlusLiga",
+    "Turkish League",
+    "SVL",
+    "Bundesliga",
+    "LNV",
+    "CEV Champions League",
+    "CEV Challenge Cup"
+  ],
+  "other": [
+    "Friendly",
+    "Training",
+    "Tournament"
+  ]
+}
