@@ -14,6 +14,7 @@ model User {
   name         String
   createdAt    DateTime     @default(now())
   teamMembers  TeamMember[]
+  editedLineups Lineup[]     @relation("LineupEditor")
 }
 
 model Team {
@@ -72,7 +73,10 @@ model Lineup {
   name           String
   rotationSystem String
   createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @default(now()) @updatedAt
+  lastEditedById String?
   team           Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  lastEditedBy   User?        @relation("LineupEditor", fields: [lastEditedById], references: [id])
   slots          LineupSlot[]
   matches        Match[]
 }
