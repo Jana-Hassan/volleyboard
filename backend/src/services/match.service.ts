@@ -18,12 +18,10 @@ import {
 import { publish } from '../events/event-bus'
 import {
   MATCH_STARTED,
+  SET_FINISHED,
   NEXT_SET_STARTED,
   MATCH_ENDED
 } from '../events/domain-events'
-
-// scorePoint now lives in scoring.service so event.service can use it without
-// importing this module. Re-exported so existing callers are unaffected.
 export { scorePoint } from './scoring.service'
 
 export const createMatch = async (
@@ -202,6 +200,7 @@ export const endSet = async (setId: string, userId: string) => {
 
   if (!set) throw new Error('SET_NOT_FOUND')
   await checkCoachOrManager(set.match.teamId, userId)
+ 
 
   setTransition('active', 'END_SET', {
     ourScore: set.ourScore,
@@ -209,9 +208,35 @@ export const endSet = async (setId: string, userId: string) => {
     setNumber: set.setNumber
   })
 
-  const updatedSet = await prisma.matchSet.update({
-    where: { id: setId },
-    data: { status: 'finished' }
+  const { updatedSet, ourSetsWon, opponentSetsWon } = await prisma.$transaction(async (tx) => {
+    const updatedSet = await tx.matchSet.update({
+      where: { id: setId },
+      data: { status: 'finished' }
+    })
+
+    const allSets = await tx.matchSet.findMany({
+      where: { matchId: set.matchId }
+    })
+
+    return {
+      updatedSet,
+      ourSetsWon: allSets.filter(
+        s => s.status === 'finished' && s.ourScore > s.opponentScore
+      ).length,
+      opponentSetsWon: allSets.filter(
+        s => s.status === 'finished' && s.opponentScore > s.ourScore
+      ).length
+    }
+  })
+
+  // Ending a set manually has to notify clients too — scoring the final point
+  // already did, so without this the two paths disagree.
+  publish(SET_FINISHED, set.matchId, {
+    setNumber: updatedSet.setNumber,
+    ourScore: updatedSet.ourScore,
+    opponentScore: updatedSet.opponentScore,
+    ourSetsWon,
+    opponentSetsWon
   })
 
   return { set: updatedSet }
