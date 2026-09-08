@@ -1,15 +1,6 @@
 import type { MatchSet } from '@prisma/client'
 import type { RotationState } from '../services/rotation.service'
 
-/**
- * Domain events published by the service layer.
- *
- * `payload` is the exact object that goes over the wire; `matchId` is routing
- * metadata for the transport and is deliberately kept out of the payload so the
- * emitted Socket.io shapes stay byte-for-byte identical to what they were when
- * the services held a reference to `io` themselves.
- */
-
 export const MATCH_STARTED = 'match_started' as const
 export const SCORE_UPDATED = 'score_updated' as const
 export const SET_FINISHED = 'set_finished' as const
@@ -77,3 +68,7 @@ export interface DomainEvent<N extends DomainEventName = DomainEventName> {
   matchId: string
   payload: DomainEventPayloads[N]
 }
+
+export type AnyDomainEvent = {
+  [N in DomainEventName]: { name: N; matchId: string; payload: DomainEventPayloads[N] }
+}[DomainEventName]

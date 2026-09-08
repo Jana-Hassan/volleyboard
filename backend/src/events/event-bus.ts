@@ -1,16 +1,12 @@
 import { EventEmitter } from 'events'
-import type { DomainEvent, DomainEventName, DomainEventPayloads } from './domain-events'
+import type {
+  AnyDomainEvent,
+  DomainEvent,
+  DomainEventName,
+  DomainEventPayloads
+} from './domain-events'
 
-/**
- * In-process domain event bus.
- *
- * The service layer publishes facts here; transports (Socket.io) subscribe.
- * This keeps the dependency arrow pointing away from the composition root:
- * services no longer import `io` from index.ts.
- *
- * Delivery is synchronous and ordered, which matters — clients rely on
- * score_updated arriving before set_finished before match_finished.
- */
+
 
 const emitter = new EventEmitter()
 
@@ -37,7 +33,12 @@ export const publish = <N extends DomainEventName>(
   emitter.emit(name, { name, matchId, payload } satisfies DomainEvent<N>)
 }
 
-// Test helper: drop all subscribers between cases.
+export const publishAll = (events: AnyDomainEvent[]): void => {
+  for (const event of events) {
+    publish(event.name, event.matchId, event.payload as never)
+  }
+}
+
 export const clearSubscribers = (): void => {
   emitter.removeAllListeners()
 }
