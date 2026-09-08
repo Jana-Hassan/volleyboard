@@ -1,6 +1,6 @@
 import prisma from '../lib/prisma'
 import { VALID_OUTCOMES } from '../lib/volleyball.constants'
-
+import { scorePoint } from './match.service'
 
 const checkMembership = async (teamId: string, userId: string): Promise<void> => {
   const member = await prisma.teamMember.findUnique({
@@ -78,7 +78,23 @@ export const logEvent = async (
 
   const liveStats = await calculateLiveStats(setId, set.matchId)
 
-  return { event, liveStats }
+  // point-scoring outcomes
+  const POINT_FOR_ACTOR = ['kill', 'ace']
+  const POINT_FOR_OPPONENT = ['error']
+
+  let scored: 'us' | 'opponent' | null = null
+
+  if (POINT_FOR_ACTOR.includes(data.outcome)) {
+    scored = data.team
+  } else if (POINT_FOR_OPPONENT.includes(data.outcome)) {
+    scored = data.team === 'us' ? 'opponent' : 'us'
+  }
+
+  if (scored) {
+    await scorePoint(setId, userId, scored)
+  }
+
+  return { event, liveStats, scored }
 }
 
 export const getSetEvents = async (setId: string, userId: string) => {

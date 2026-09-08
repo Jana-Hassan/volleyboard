@@ -357,6 +357,8 @@ export const getMatchState = async (matchId: string, userId: string) => {
 
   return {
     matchId: match.id,
+    teamId: match.teamId,
+    teamName: match.team.name,
     status: match.status,
     opponentName: match.opponentName,
     competition: match.competition,

@@ -11,6 +11,7 @@ import matchRoutes from './routes/match.routes'
 import { errorHandler } from './middleware/error'
 import { initializeSocket } from './socket/index'
 import referenceRoutes from './routes/reference.routes'
+import eventRoutes from './routes/event.routes'
 
 
 dotenv.config()
@@ -32,7 +33,9 @@ app.use('/api/v1/teams', teamRoutes)
 app.use('/api/v1/teams/:teamId/players', playerRoutes)
 app.use('/api/v1/teams/:teamId/lineups', lineupRoutes)
 app.use('/api/v1/teams/:teamId/matches', matchRoutes)
+app.use('/api/v1/matches', matchRoutes)
 app.use('/api/v1/reference', referenceRoutes)
+app.use('/api/v1/sets/:setId/events', eventRoutes)
 
 app.get('/health', (req, res) => { res.json({ status: 'ok', project: 'VolleyBoard' }) })
 
