@@ -1,42 +1,30 @@
-import { io } from '../index'
 import prisma from '../lib/prisma'
 import {
   matchTransition,
   setTransition,
   checkSetEnd,
   checkMatchEnd,
-  determineSideOut,
   GuardError
 } from '../fsm/match.fsm'
 import {
   initializeRotation,
-  rotate,
-  serializePositions,
-  RotationState
+  serializePositions
 } from './rotation.service'
+import {
+  checkManagerOrAssistant,
+  checkCoachOrManager,
+  checkMembership
+} from './team-access'
+import { publish } from '../events/event-bus'
+import {
+  MATCH_STARTED,
+  NEXT_SET_STARTED,
+  MATCH_ENDED
+} from '../events/domain-events'
 
-const checkManagerOrAssistant = async (teamId: string, userId: string): Promise<void> => {
-  const member = await prisma.teamMember.findUnique({
-    where: { teamId_userId: { teamId, userId } }
-  })
-  if (!member) throw new Error('FORBIDDEN')
-  if (!['manager', 'assistant'].includes(member.role)) throw new Error('FORBIDDEN')
-}
-
-const checkCoachOrManager = async (teamId: string, userId: string): Promise<void> => {
-  const member = await prisma.teamMember.findUnique({
-    where: { teamId_userId: { teamId, userId } }
-  })
-  if (!member) throw new Error('FORBIDDEN')
-  if (!['manager', 'coach'].includes(member.role)) throw new Error('FORBIDDEN')
-}
-
-const checkMembership = async (teamId: string, userId: string): Promise<void> => {
-  const member = await prisma.teamMember.findUnique({
-    where: { teamId_userId: { teamId, userId } }
-  })
-  if (!member) throw new Error('FORBIDDEN')
-}
+// scorePoint now lives in scoring.service so event.service can use it without
+// importing this module. Re-exported so existing callers are unaffected.
+export { scorePoint } from './scoring.service'
 
 export const createMatch = async (
   teamId: string,
@@ -136,177 +124,11 @@ export const startMatch = async (matchId: string, userId: string) => {
     return { match: updatedMatch, set: firstSet, rotationState }
   })
 
-  io.to(`match:${matchId}`).emit('match_started', {
+  publish(MATCH_STARTED, matchId, {
     matchId,
     set: result.set,
     rotationState: result.rotationState
   })
-
-  return result
-}
-
-export const scorePoint = async (
-  setId: string,
-  userId: string,
-  scorer: 'us' | 'opponent'
-) => {
-  const set = await prisma.matchSet.findUnique({
-    where: { id: setId },
-    include: {
-      match: true,
-      rotations: {
-        orderBy: { recordedAt: 'desc' },
-        take: 1
-      }
-    }
-  })
-
-  if (!set) throw new Error('SET_NOT_FOUND')
-  if (set.status === 'finished') throw new Error('SET_FINISHED')
-
-  await checkMembership(set.match.teamId, userId)
-
-  const newOurScore = scorer === 'us' ? set.ourScore + 1 : set.ourScore
-  const newOppScore = scorer === 'opponent' ? set.opponentScore + 1 : set.opponentScore
-
-  const lastRotation = set.rotations[0]
-  const currentPositions = lastRotation.positions as any
-  const currentServingTeam = set.servingTeam as 'us' | 'opponent'
-
-  const currentState: RotationState = {
-    positions: currentPositions,
-    currentRotation: set.currentRotation,
-    servingTeam: currentServingTeam
-  }
-
-  const isSideOut = determineSideOut(scorer, currentServingTeam)
-  const newServingTeam: 'us' | 'opponent' = scorer === 'us' ? 'us' : 'opponent'
-
-  let newRotationState = currentState
-  let newRotation = set.currentRotation
-
-  const result = await prisma.$transaction(async (tx) => {
-    await tx.matchSet.update({
-      where: { id: setId },
-      data: {
-        ourScore: newOurScore,
-        opponentScore: newOppScore,
-        servingTeam: newServingTeam
-      }
-    })
-
-    if (isSideOut) {
-      newRotationState = rotate(currentState)
-      newRotationState = { ...newRotationState, servingTeam: newServingTeam }
-      newRotation = newRotationState.currentRotation
-
-      await tx.rotation.create({
-        data: {
-          setId,
-          rotationNumber: newRotation,
-          positions: serializePositions(newRotationState.positions)
-        }
-      })
-
-      await tx.matchSet.update({
-        where: { id: setId },
-        data: { currentRotation: newRotation }
-      })
-    }
-
-    await tx.matchEvent.create({
-      data: {
-        setId,
-        team: scorer,
-        eventType: 'point',
-        outcome: 'scored',
-        rotation: newRotation,
-        payload: {
-          ourScore: newOurScore,
-          opponentScore: newOppScore,
-          isSideOut,
-          servingTeam: newServingTeam
-        }
-      }
-    })
-
-    const setOver = checkSetEnd(newOurScore, newOppScore, set.setNumber)
-    let matchOver = false
-    let ourSetsWon = 0
-    let opponentSetsWon = 0
-
-    if (setOver) {
-      await tx.matchSet.update({
-        where: { id: setId },
-        data: { status: 'finished' }
-      })
-
-      const allSets = await tx.matchSet.findMany({
-        where: { matchId: set.matchId }
-      })
-
-      ourSetsWon = allSets.filter(
-        s => s.status === 'finished' && s.ourScore > s.opponentScore
-      ).length
-
-      opponentSetsWon = allSets.filter(
-        s => s.status === 'finished' && s.opponentScore > s.ourScore
-      ).length
-
-      matchOver = checkMatchEnd(ourSetsWon, opponentSetsWon)
-
-      if (matchOver) {
-        await tx.match.update({
-          where: { id: set.matchId },
-          data: { status: 'completed', endedAt: new Date() }
-        })
-      }
-    }
-
-    return {
-      ourScore: newOurScore,
-      opponentScore: newOppScore,
-      currentRotation: newRotation,
-      rotationState: newRotationState,
-      isSideOut,
-      servingTeam: newServingTeam,
-      setOver,
-      matchOver,
-      ourSetsWon,
-      opponentSetsWon
-    }
-  })
-
-  io.to(`match:${set.matchId}`).emit('score_updated', {
-    ourScore: result.ourScore,
-    opponentScore: result.opponentScore,
-    currentRotation: result.currentRotation,
-    rotationState: result.rotationState,
-    isSideOut: result.isSideOut,
-    servingTeam: result.servingTeam,
-    setOver: result.setOver,
-    matchOver: result.matchOver,
-    ourSetsWon: result.ourSetsWon,
-    opponentSetsWon: result.opponentSetsWon
-  })
-
-  if (result.setOver) {
-    io.to(`match:${set.matchId}`).emit('set_finished', {
-      setNumber: set.setNumber,
-      ourScore: result.ourScore,
-      opponentScore: result.opponentScore,
-      ourSetsWon: result.ourSetsWon,
-      opponentSetsWon: result.opponentSetsWon
-    })
-  }
-
-  if (result.matchOver) {
-    io.to(`match:${set.matchId}`).emit('match_finished', {
-      ourSetsWon: result.ourSetsWon,
-      opponentSetsWon: result.opponentSetsWon,
-      winner: result.ourSetsWon === 3 ? 'us' : 'opponent'
-    })
-  }
 
   return result
 }
@@ -464,7 +286,7 @@ export const startNextSet = async (matchId: string, userId: string) => {
     return { set: newSet, rotationState }
   })
 
-  io.to(`match:${matchId}`).emit('next_set_started', {
+  publish(NEXT_SET_STARTED, matchId, {
     setNumber: nextSetNumber,
     servingTeam,
     rotationState: result.rotationState
@@ -488,7 +310,7 @@ export const endMatch = async (matchId: string, userId: string) => {
     data: { status: newStatus, endedAt: new Date() }
   })
 
-  io.to(`match:${matchId}`).emit('match_ended', {
+  publish(MATCH_ENDED, matchId, {
     matchId,
     status: 'completed'
   })

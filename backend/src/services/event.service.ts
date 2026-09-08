@@ -1,23 +1,9 @@
 import prisma from '../lib/prisma'
 import { VALID_OUTCOMES } from '../lib/volleyball.constants'
-import { scorePoint } from './match.service'
-
-const checkMembership = async (teamId: string, userId: string): Promise<void> => {
-  const member = await prisma.teamMember.findUnique({
-    where: { teamId_userId: { teamId, userId } }
-  })
-  if (!member) throw new Error('FORBIDDEN')
-}
-
-const checkAnalystOrCoach = async (teamId: string, userId: string): Promise<void> => {
-  const member = await prisma.teamMember.findUnique({
-    where: { teamId_userId: { teamId, userId } }
-  })
-  if (!member) throw new Error('FORBIDDEN')
-  if (!['manager', 'coach', 'analyst'].includes(member.role)) {
-    throw new Error('FORBIDDEN')
-  }
-}
+// Depends on scoring.service, not match.service: both sit above the same
+// shared module rather than reaching sideways into each other.
+import { scorePoint } from './scoring.service'
+import { checkMembership, checkAnalystOrCoach } from './team-access'
 
 export const logEvent = async (
   setId: string,

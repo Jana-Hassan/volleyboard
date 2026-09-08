@@ -10,6 +10,7 @@ import lineupRoutes from './routes/lineup.routes'
 import matchRoutes from './routes/match.routes'
 import { errorHandler } from './middleware/error'
 import { initializeSocket } from './socket/index'
+import { registerMatchPublisher } from './socket/match.publisher'
 import referenceRoutes from './routes/reference.routes'
 import eventRoutes from './routes/event.routes'
 
@@ -18,7 +19,7 @@ dotenv.config()
 
 const app = express()
 const httpServer = createServer(app)
-export const io = new Server(httpServer, {
+const io = new Server(httpServer, {
   cors: {
     origin: 'http://localhost:5173',
     methods: ['GET', 'POST']
@@ -42,6 +43,7 @@ app.get('/health', (req, res) => { res.json({ status: 'ok', project: 'VolleyBoar
 app.use(errorHandler)
 
 initializeSocket(io)
+registerMatchPublisher(io)
 
 const PORT = process.env.PORT || 3000
 

@@ -1,5 +1,6 @@
 import { Response, NextFunction } from 'express'
 import { AuthRequest } from '../types'
+import prisma from '../lib/prisma'
 import { logEvent, getSetEvents, calculateLiveStats } from '../services/event.service'
 
 export const log = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
@@ -42,12 +43,10 @@ export const getLiveStats = async (req: AuthRequest, res: Response, next: NextFu
   try {
     const { setId } = req.params as { setId: string }
 
-    const set = await import('../lib/prisma').then(m =>
-      m.default.matchSet.findUnique({
-        where: { id: setId },
-        select: { matchId: true, match: { select: { teamId: true } } }
-      })
-    )
+    const set = await prisma.matchSet.findUnique({
+      where: { id: setId },
+      select: { matchId: true, match: { select: { teamId: true } } }
+    })
 
     if (!set) {
       res.status(404).json({ error: 'Set not found' })
