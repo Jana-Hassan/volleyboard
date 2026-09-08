@@ -2,8 +2,10 @@ import prisma from '../lib/prisma'
 import { VALID_OUTCOMES } from '../lib/volleyball.constants'
 // Depends on scoring.service, not match.service: both sit above the same
 // shared module rather than reaching sideways into each other.
-import { scorePoint } from './scoring.service'
+import { scorePointWithin } from './scoring.service'
 import { checkMembership, checkAnalystOrCoach } from './team-access'
+import { publishAll } from '../events/event-bus'
+import type { AnyDomainEvent } from '../events/domain-events'
 
 export const logEvent = async (
   setId: string,
@@ -45,26 +47,6 @@ export const logEvent = async (
     if (!opponentPlayer) throw new Error('OPPONENT_PLAYER_NOT_FOUND')
   }
 
-  const event = await prisma.matchEvent.create({
-    data: {
-      setId,
-      team: data.team,
-      eventType: data.eventType,
-      outcome: data.outcome,
-      playerId: data.playerId ?? null,
-      opponentPlayerId: data.opponentPlayerId ?? null,
-      rotation: data.rotation ?? set.currentRotation,
-      payload: {}
-    },
-    include: {
-      player: true,
-      opponentPlayer: true
-    }
-  })
-
-  const liveStats = await calculateLiveStats(setId, set.matchId)
-
-  // point-scoring outcomes
   const POINT_FOR_ACTOR = ['kill', 'ace']
   const POINT_FOR_OPPONENT = ['error']
 
@@ -76,11 +58,48 @@ export const logEvent = async (
     scored = data.team === 'us' ? 'opponent' : 'us'
   }
 
-  if (scored) {
-    await scorePoint(setId, userId, scored)
-  }
+  const { event, events } = await prisma.$transaction(async (tx) => {
+    const event = await tx.matchEvent.create({
+      data: {
+        setId,
+        team: data.team,
+        eventType: data.eventType,
+        outcome: data.outcome,
+        playerId: data.playerId ?? null,
+        opponentPlayerId: data.opponentPlayerId ?? null,
+        rotation: data.rotation ?? set.currentRotation,
+        payload: {}
+      },
+      include: {
+        player: true,
+        opponentPlayer: true
+      }
+    })
+
+    if (!scored) return { event, events: [] as AnyDomainEvent[] }
+
+    const { events } = await scorePointWithin(tx, setId, userId, scored)
+    return { event, events }
+  }, { timeout: 15000 })
+
+  publishAll(events)
+
+ 
+  const liveStats = await calculateLiveStats(setId, set.matchId)
 
   return { event, liveStats, scored }
+}
+
+export const getLiveStatsForSet = async (setId: string, userId: string) => {
+  const set = await prisma.matchSet.findUnique({
+    where: { id: setId },
+    select: { matchId: true, match: { select: { teamId: true } } }
+  })
+
+  if (!set) throw new Error('SET_NOT_FOUND')
+  await checkMembership(set.match.teamId, userId)
+
+  return calculateLiveStats(setId, set.matchId)
 }
 
 export const getSetEvents = async (setId: string, userId: string) => {
