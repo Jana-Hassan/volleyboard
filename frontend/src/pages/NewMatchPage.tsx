@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import api from '../lib/api'
 import type { Lineup } from '../types'
-import Navbar from '../components/Navbar'
+import PageShell from '../components/PageShell'
 
 interface NationalTeam {
   name: string
@@ -136,14 +136,14 @@ const NewMatchPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#050d0f] text-white">
-      <Navbar breadcrumbs={[
+    <PageShell
+      maxWidth="max-w-lg"
+      breadcrumbs={[
         { label: 'Your Teams', path: '/dashboard' },
         { label: teamName, path: `/teams/${teamId}?tab=matches` },
         { label: 'New Match' }
-      ]} />
-
-      <div className="max-w-lg mx-auto px-6 py-10">
+      ]}
+    >
         <div className="mb-8">
           <h2 className="text-xl font-semibold">Schedule a Match</h2>
           <p className="text-[#4a6b6b] text-sm mt-1">
@@ -151,7 +151,8 @@ const NewMatchPage = () => {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1">
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-5 pr-1">
 
           {/* Opponent */}
           <div>
@@ -295,11 +296,13 @@ const NewMatchPage = () => {
             <p className="text-[#8B1A2C] text-sm">{error}</p>
           )}
 
-          <div className="flex gap-3 pt-2">
+          </div>
+
+          <div className="flex gap-3 pt-4 shrink-0">
             <button
               type="button"
               onClick={() => navigate(`/teams/${teamId}?tab=matches`)}
-              className="flex-1 border border-[#0f2d30] text-[#4a6b6b] py-3 rounded text-sm hover:text-white hover:border-[#4a6b6b] transition-colors"
+              className="flex-1 border border-[#8B1A2C] text-[#8B1A2C] py-3 rounded text-sm hover:bg-[#8B1A2C] hover:text-white transition-colors"
             >
               Cancel
             </button>
@@ -313,8 +316,7 @@ const NewMatchPage = () => {
           </div>
 
         </form>
-      </div>
-    </div>
+    </PageShell>
   )
 }
 

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import api from '../lib/api'
 import type { Team, Player, Lineup } from '../types'
-import Navbar from '../components/Navbar'
+import PageShell from '../components/PageShell'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 
 interface Match {
@@ -106,15 +106,14 @@ const TeamPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#050d0f] text-white">
-      <Navbar breadcrumbs={[
+    <PageShell
+      breadcrumbs={[
         { label: 'Your Teams', path: '/dashboard' },
         { label: team.name }
-      ]} />
+      ]}
+    >
 
-      <div className="max-w-4xl mx-auto px-6 py-10">
-
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-8 shrink-0">
           <div>
             <h2 className="text-xl font-semibold">{team.name}</h2>
             <p className="text-[#4a6b6b] text-sm mt-1">
@@ -123,7 +122,7 @@ const TeamPage = () => {
           </div>
         </div>
 
-        <div className="flex gap-6 border-b border-[#0f2d30] mb-6">
+        <div className="flex gap-6 border-b border-[#0f2d30] mb-6 shrink-0">
           {tabs.map(tab => (
             <button
               key={tab}
@@ -141,6 +140,8 @@ const TeamPage = () => {
 </button>
           ))}
         </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1">
 
         {/* ROSTER TAB */}
         {activeTab === 'roster' && (
@@ -352,8 +353,9 @@ const TeamPage = () => {
           </div>
         )}
 
-      </div>
-    </div>
+        </div>
+
+    </PageShell>
   )
 }
 

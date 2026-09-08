@@ -10,8 +10,10 @@ interface CourtProps {
   players: CourtPlayer[]
   mode?: 'edit' | 'live'
   selectedPosition?: number | null
+  selectedPlayerId?: string | null
   servingPosition?: number | null
   onPositionClick?: (position: number) => void
+  onPlayerClick?: (playerId: string) => void
   showRotationLabel?: number
   className?: string
 }
@@ -38,14 +40,17 @@ const Court = ({
   players,
   mode = 'edit',
   selectedPosition = null,
+  selectedPlayerId = null,
   servingPosition = null,
   onPositionClick,
+  onPlayerClick,
   showRotationLabel,
   className = ''
 }: CourtProps) => {
 
   const playerAt = (position: number) => players.find(p => p.position === position)
-  const isInteractive = mode === 'edit' && Boolean(onPositionClick)
+  const isEditable = mode === 'edit' && Boolean(onPositionClick)
+  const isSelectable = mode === 'live' && Boolean(onPlayerClick)
 
   return (
     <div className={`bg-[#050d0f] border border-[#0f2d30] rounded overflow-hidden ${className}`}>
@@ -144,17 +149,25 @@ const Court = ({
           const coord = POSITION_COORDS[position]
           const player = playerAt(position)
           const isSelected = selectedPosition === position
+          const isPlayerSelected = player && selectedPlayerId === player.playerId
           const isServer = servingPosition === position
 
-          const ringColor = player
-            ? player.isLibero ? '#8BBB92' : '#2A835F'
-            : isSelected ? SELECT_COLOR : 'rgba(255,255,255,0.35)'
+          const ringColor = isPlayerSelected
+            ? '#ffffff'
+            : player
+              ? player.isLibero ? '#8BBB92' : '#2A835F'
+              : isSelected ? SELECT_COLOR : 'rgba(255,255,255,0.35)'
+
+          const handleClick = () => {
+            if (isEditable) onPositionClick!(position)
+            else if (isSelectable && player) onPlayerClick!(player.playerId)
+          }
 
           return (
             <g
               key={position}
-              onClick={isInteractive ? () => onPositionClick!(position) : undefined}
-              className={isInteractive ? 'cursor-pointer' : ''}
+              onClick={handleClick}
+              className={(isEditable || (isSelectable && player)) ? 'cursor-pointer' : ''}
             >
               {isServer && (
                 <circle cx={coord.x} cy={coord.y} r={TOKEN_R + 5} fill="none" stroke="#2A835F" strokeWidth="1.2">
@@ -165,11 +178,11 @@ const Court = ({
 
               <circle
                 cx={coord.x} cy={coord.y} r={TOKEN_R}
-                fill={isSelected ? 'rgba(255,255,255,0.15)' : player ? '#0d1f18' : 'rgba(0,0,0,0.3)'}
+                fill={isPlayerSelected ? 'rgba(255,255,255,0.2)' : isSelected ? 'rgba(255,255,255,0.15)' : player ? '#0d1f18' : 'rgba(0,0,0,0.3)'}
                 stroke={ringColor}
-                strokeWidth={player ? 2.2 : 1.5}
+                strokeWidth={isPlayerSelected ? 3 : player ? 2.2 : 1.5}
                 strokeDasharray={player ? undefined : '4 3'}
-                style={{ transition: 'stroke 200ms ease, fill 200ms ease' }}
+                style={{ transition: 'stroke 200ms ease, fill 200ms ease, stroke-width 200ms ease' }}
               />
 
               <text
