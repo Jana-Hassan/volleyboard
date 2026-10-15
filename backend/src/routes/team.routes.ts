@@ -12,6 +12,6 @@ router.get('/:teamId', getOne)
 router.put('/:teamId', update)
 router.delete('/:teamId', remove)
 router.post('/:teamId/invite', invite)
-router.delete('/:teamId/members/:memberId', kickMember)
+router.delete('/:teamId/members/:userId', kickMember)
 
 export default router

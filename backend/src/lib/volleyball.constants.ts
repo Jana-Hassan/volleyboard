@@ -7,7 +7,7 @@ export const VALID_OUTCOMES: Record<string, string[]> = {
   set:       ['perfect', 'good', 'error']
 }
 
-export const VALID_ROLES = ['starter', 'bench', 'reserved']
+export const VALID_ROLES = ['starter', 'libero', 'bench', 'reserved']
 export const VALID_ROTATION_POSITIONS = [1, 2, 3, 4, 5, 6]
 export const VALID_MEMBER_ROLES = ['coach', 'assistant', 'analyst', 'trainer']
 
@@ -19,7 +19,12 @@ export const DECIDING_SET_TARGET = 15
 export const MIN_WIN_DIFF = 2
 
 export const BACK_ROW_POSITIONS = [1, 5, 6]
+export const FRONT_ROW_POSITIONS = [2, 3, 4]
+export const SERVER_POSITION = 1
+export const MAX_LIBEROS = 2
+export const CHALLENGE_TYPES = ['in_out', 'block_touch', 'net_touch', 'foot_fault', 'antenna', 'ball_touched_floor', 'other']
 
+// Clockwise rotation
 export const ROTATION_MAP: Record<number, number> = {
   1: 6,
   2: 1,

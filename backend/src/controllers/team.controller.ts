@@ -63,8 +63,8 @@ export const invite = async (req: AuthRequest, res: Response, next: NextFunction
 
 export const kickMember = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { teamId, memberId } = req.params as { teamId: string; memberId: string }
-    await removeMember(teamId, req.user!.userId, memberId)
+    const { teamId, userId } = req.params as { teamId: string; userId: string }
+    await removeMember(teamId, req.user!.userId, userId)
     res.status(204).send()
   } catch (error) { next(error) }
 }

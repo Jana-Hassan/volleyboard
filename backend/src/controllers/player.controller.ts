@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express'
 import { AuthRequest } from '../types'
 import { addPlayer, getPlayers, updatePlayer, removePlayer } from '../services/player.service'
+import { getPlayerProfile } from '../services/profile.service'
 
 export const add = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -36,5 +37,11 @@ export const remove = async (req: AuthRequest, res: Response, next: NextFunction
     const { teamId, playerId } = req.params as { teamId: string; playerId: string }
     await removePlayer(teamId, playerId, req.user!.userId)
     res.status(204).send()
+  } catch (error) { next(error) }
+}
+export const getOne = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { teamId, playerId } = req.params as { teamId: string; playerId: string }
+    res.status(200).json(await getPlayerProfile(teamId, playerId, req.user!.userId))
   } catch (error) { next(error) }
 }

@@ -1,8 +1,8 @@
 import {
   ROTATION_MAP,
   BACK_ROW_POSITIONS,
-  FRONT_BACK_RULES,
-  LEFT_RIGHT_RULES
+  FRONT_ROW_POSITIONS,
+  SERVER_POSITION
 } from '../lib/volleyball.constants'
 
 export interface CourtPosition {
@@ -12,19 +12,26 @@ export interface CourtPosition {
   rotationPosition: number
 }
 
+export interface LiberoOnCourt {
+  liberoId: string
+  liberoName: string
+  replacedPlayerId: string
+}
+
+export interface LiberoState {
+  onCourt: LiberoOnCourt | null
+  // Rally count (points played in the set) at the last libero replacement.
+  // FIVB 19.3.2.1 needs a completed rally between two replacements.
+  lastChangeRally: number | null
+}
+
 export interface RotationState {
+  // The official rotation order: always the six regular players, never the
+  // libero. What is actually on court is courtView(state).
   positions: Record<number, CourtPosition>
   currentRotation: number
   servingTeam: 'us' | 'opponent'
-  liberoSwap?: {
-    liberoId: string
-    replacedPlayerId: string
-  }
-}
-
-export interface OverlapViolation {
-  positions: [number, number]
-  message: string
+  libero?: LiberoState | null
 }
 
 export const initializeRotation = (
@@ -47,75 +54,104 @@ export const initializeRotation = (
     }
   }
 
-  return { positions, currentRotation: 1, servingTeam }
+  return { positions, currentRotation: 1, servingTeam, libero: { onCourt: null, lastChangeRally: null } }
 }
 
-export const rotate = (state: RotationState): RotationState => {
+const positionOf = (state: RotationState, playerId: string): number | null => {
+  for (const [pos, player] of Object.entries(state.positions)) {
+    if (player.playerId === playerId) return parseInt(pos)
+  }
+  return null
+}
+
+const assertRallySinceLastChange = (state: RotationState, rally: number): void => {
+  const last = state.libero?.lastChangeRally
+  if (last !== null && last !== undefined && rally <= last) throw new Error('LIBERO_NEEDS_RALLY')
+}
+
+
+export const rotate = (state: RotationState, rally: number): RotationState => {
   const newPositions: Record<number, CourtPosition> = {}
 
-  for (const [newPos, oldPos] of Object.entries(ROTATION_MAP)) {
-    const pos = parseInt(newPos)
-    newPositions[pos] = {
-      ...state.positions[oldPos],
-      rotationPosition: pos
+  // ROTATION_MAP is "from -> to": the player in 2 moves to 1, 1 moves to 6...
+  for (const [fromPos, toPos] of Object.entries(ROTATION_MAP)) {
+    newPositions[toPos] = {
+      ...state.positions[parseInt(fromPos)],
+      rotationPosition: toPos
+    }
+  }
+
+  let libero = state.libero ?? null
+  if (libero?.onCourt) {
+    const next = { ...state, positions: newPositions }
+    const slot = positionOf(next, libero.onCourt.replacedPlayerId)
+    if (slot !== null && FRONT_ROW_POSITIONS.includes(slot)) {
+      libero = { onCourt: null, lastChangeRally: rally }
     }
   }
 
   return {
     ...state,
     positions: newPositions,
-    currentRotation: (state.currentRotation % 6) + 1
+    currentRotation: (state.currentRotation % 6) + 1,
+    libero
   }
 }
 
-export const validateOverlap = (
-  positions: Record<number, CourtPosition>
-): OverlapViolation[] => {
-  const violations: OverlapViolation[] = []
-
-  for (const rule of FRONT_BACK_RULES) {
-    if (!positions[rule.front] || !positions[rule.back]) continue
-    violations.push({
-      positions: [rule.front, rule.back],
-      message: `Position ${rule.front} must be in front of position ${rule.back}`
-    })
-  }
-
-  return violations
-}
-
-export const applyLiberoSwap = (
+export const liberoIn = (
   state: RotationState,
-  liberoId: string,
-  replacedPlayerId: string
+  libero: { playerId: string; playerName: string },
+  replacedPlayerId: string,
+  rally: number
 ): RotationState => {
-  const positions = { ...state.positions }
+  const onCourt = state.libero?.onCourt ?? null
 
-  let liberoPosition: number | null = null
-  let replacedPosition: number | null = null
-
-  for (const [pos, player] of Object.entries(positions)) {
-    if (player.playerId === liberoId) liberoPosition = parseInt(pos)
-    if (player.playerId === replacedPlayerId) replacedPosition = parseInt(pos)
+  if (onCourt) {
+    const isExchange = replacedPlayerId === onCourt.liberoId && libero.playerId !== onCourt.liberoId
+    if (!isExchange) throw new Error('LIBERO_ALREADY_ON_COURT')
+    assertRallySinceLastChange(state, rally)
+    return {
+      ...state,
+      libero: {
+        onCourt: { liberoId: libero.playerId, liberoName: libero.playerName, replacedPlayerId: onCourt.replacedPlayerId },
+        lastChangeRally: rally
+      }
+    }
   }
 
-  if (liberoPosition === null || replacedPosition === null) {
-    throw new Error('PLAYER_NOT_FOUND')
-  }
-
-  if (!BACK_ROW_POSITIONS.includes(replacedPosition)) {
-    throw new Error('LIBERO_FRONT_ROW')
-  }
-
-  const temp = positions[liberoPosition]
-  positions[liberoPosition] = positions[replacedPosition]
-  positions[replacedPosition] = temp
+  const slot = positionOf(state, replacedPlayerId)
+  if (slot === null) throw new Error('PLAYER_NOT_ON_COURT')
+  if (!BACK_ROW_POSITIONS.includes(slot)) throw new Error('LIBERO_FRONT_ROW')
+  if (slot === SERVER_POSITION && state.servingTeam === 'us') throw new Error('LIBERO_CANNOT_SERVE')
+  assertRallySinceLastChange(state, rally)
 
   return {
     ...state,
-    positions,
-    liberoSwap: { liberoId, replacedPlayerId }
+    libero: {
+      onCourt: { liberoId: libero.playerId, liberoName: libero.playerName, replacedPlayerId },
+      lastChangeRally: rally
+    }
   }
+}
+
+export const liberoOut = (state: RotationState, rally: number): RotationState => {
+  if (!state.libero?.onCourt) throw new Error('NO_LIBERO_ON_COURT')
+  assertRallySinceLastChange(state, rally)
+  return { ...state, libero: { onCourt: null, lastChangeRally: rally } }
+}
+
+export const courtView = (state: RotationState): Record<number, CourtPosition> => {
+  const onCourt = state.libero?.onCourt
+  if (!onCourt) return state.positions
+
+  const view: Record<number, CourtPosition> = { ...state.positions }
+  for (const [pos, player] of Object.entries(state.positions)) {
+    if (player.playerId === onCourt.replacedPlayerId) {
+      const p = parseInt(pos)
+      view[p] = { playerId: onCourt.liberoId, playerName: onCourt.liberoName, isLibero: true, rotationPosition: p }
+    }
+  }
+  return view
 }
 
 export const serializePositions = (
@@ -124,4 +160,34 @@ export const serializePositions = (
   return Object.entries(positions).reduce((acc, [pos, player]) => {
     return { ...acc, [pos]: player }
   }, {})
+}
+
+export const serializeLibero = (libero: LiberoState | null | undefined): LiberoState =>
+  libero ?? { onCourt: null, lastChangeRally: null }
+
+/** Rebuild the rotation state from a stored Rotation row and its set. */
+export const rotationStateFromRow = (
+  row: { positions: unknown; libero?: unknown },
+  set: { currentRotation: number; servingTeam: string }
+): RotationState => ({
+  positions: row.positions as Record<number, CourtPosition>,
+  currentRotation: set.currentRotation,
+  servingTeam: set.servingTeam as 'us' | 'opponent',
+  libero: (row.libero as LiberoState | null | undefined) ?? null
+})
+
+export const substitute = (
+  state: RotationState,
+  playerOutId: string,
+  playerIn: { playerId: string; playerName: string }
+): RotationState => {
+  const slot = positionOf(state, playerOutId)
+  if (slot === null) throw new Error('PLAYER_NOT_ON_COURT')
+  return {
+    ...state,
+    positions: {
+      ...state.positions,
+      [slot]: { playerId: playerIn.playerId, playerName: playerIn.playerName, isLibero: false, rotationPosition: slot }
+    }
+  }
 }

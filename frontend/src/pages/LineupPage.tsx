@@ -2,10 +2,14 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../lib/api'
 import type { Player, Lineup } from '../types'
-import Navbar from '../components/Navbar'
 import Court from '../components/Court'
+import PageShell from '../components/PageShell'
+import FitList from '../components/ui/FitList'
+import Button from '../components/ui/Button'
+import Pill from '../components/ui/Pill'
+import { useBreakpoint } from '../hooks/useBreakpoint'
 
-type SlotRole = 'starter' | 'bench' | 'reserved'
+type SlotRole = 'starter' | 'libero' | 'bench' | 'reserved'
 
 interface Assignment {
   playerId: string
@@ -14,12 +18,14 @@ interface Assignment {
 }
 
 const ROTATION_SYSTEMS = ['5-1', '6-2', '4-2']
-const LIBERO_ALLOWED_POSITIONS = [5, 6]
+const MAX_LIBEROS = 2
 
 const LineupPage = () => {
   const { teamId, lineupId } = useParams<{ teamId: string; lineupId?: string }>()
   const navigate = useNavigate()
   const isEditing = Boolean(lineupId)
+  const bp = useBreakpoint()
+  const [tab, setTab] = useState<'court' | 'players'>('court')
 
   const [players, setPlayers] = useState<Player[]>([])
   const [teamName, setTeamName] = useState('')
@@ -86,27 +92,25 @@ const LineupPage = () => {
   const starters = assignments.filter(a => a.role === 'starter')
   const bench = assignments.filter(a => a.role === 'bench')
   const reserved = assignments.filter(a => a.role === 'reserved')
+  const liberos = assignments.filter(a => a.role === 'libero')
 
-  const liberoOnCourt = starters.find(a => getPlayer(a.playerId)?.isLibero)
+  // Lineups saved before the libero rules could have a libero among the six.
+  const liberoStarters = starters.filter(a => getPlayer(a.playerId)?.isLibero)
+  const liberosOnBench = bench.filter(a => getPlayer(a.playerId)?.isLibero)
 
   const setterCount = starters.filter(
     a => getPlayer(a.playerId)?.position.toLowerCase() === 'setter'
   ).length
   const requiredSetters = rotationSystem === '5-1' ? 1 : 2
 
-  const blockReason = (player: Player, position: number): string | null => {
-    if (player.isLibero) {
-      if (liberoOnCourt && liberoOnCourt.playerId !== player.id) {
-        return 'Only one libero on court'
-      }
-      if (!LIBERO_ALLOWED_POSITIONS.includes(position)) {
-        return position === 1
-          ? 'Libero cannot serve'
-          : 'Libero cannot play front row'
-      }
-    }
-    return null
-  }
+  // The libero is never one of the six starters (FIVB 19); during the match
+  // they come on for a back-row player.
+  const blockReason = (player: Player): string | null =>
+    player.isLibero ? 'A libero is not one of the six starters: give them a libero slot (L)' : null
+
+  // A registered libero plays as libero or sits out; everyone else is bench or reserved.
+  const rolesFor = (player: Player): SlotRole[] =>
+    player.isLibero ? ['libero', 'reserved'] : ['bench', 'reserved']
 
   const assignToPosition = (playerId: string, position: number) => {
     setAssignments(prev => {
@@ -142,6 +146,15 @@ const LineupPage = () => {
     if (starters.length !== 6) {
       return setError(`Assign exactly 6 starters (currently ${starters.length})`)
     }
+    if (liberoStarters.length > 0) {
+      return setError('A libero cannot be a starter')
+    }
+    if (liberosOnBench.length > 0) {
+      return setError('A libero cannot be a bench substitute')
+    }
+    if (liberos.length > MAX_LIBEROS) {
+      return setError(`At most ${MAX_LIBEROS} liberos (currently ${liberos.length})`)
+    }
     if (setterCount !== requiredSetters) {
       return setError(
         `${rotationSystem} requires exactly ${requiredSetters} setter${requiredSetters > 1 ? 's' : ''} on court (currently ${setterCount})`
@@ -157,229 +170,163 @@ const LineupPage = () => {
         await api.post(`/teams/${teamId}/lineups`, payload)
       }
       navigate(`/teams/${teamId}?tab=lineups`)
-    } catch (err: any) {
-      setError(err?.response?.data?.error ?? 'Failed to save lineup')
+    } catch (err) {
+      setError((err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to save lineup')
     } finally {
       setSubmitting(false)
     }
   }
 
   const formatEditedAt = (iso: string) =>
-    new Date(iso).toLocaleString('en-GB', {
-      day: 'numeric', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit'
-    })
-
-  const timeAgo = (iso: string) => {
-    const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
-    if (mins < 1) return 'just now'
-    if (mins < 60) return `${mins} min ago`
-    const hours = Math.floor(mins / 60)
-    if (hours < 24) return `${hours}h ago`
-    return `${Math.floor(hours / 24)}d ago`
-  }
+    new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-[#050d0f] flex items-center justify-center">
-        <span className="text-[#4a6b6b] text-sm">Loading...</span>
-      </div>
-    )
+    return <div className="h-dvh bg-surface flex items-center justify-center text-muted text-sm">Loading…</div>
   }
 
+  const court = (
+    <div className="flex-1 min-h-0 flex flex-col gap-2">
+      <Court
+        fit="contain"
+        className="flex-1 min-h-0"
+        players={starters.map(a => {
+          const p = getPlayer(a.playerId)!
+          return { playerId: p.id, name: p.name, number: p.number, isLibero: p.isLibero, position: a.rotationPosition! }
+        })}
+        mode="edit"
+        selectedPosition={selectedPosition}
+        onPositionClick={position => {
+          if (getPlayerAtPosition(position)) clearPosition(position)
+          else {
+            setSelectedPosition(selectedPosition === position ? null : position)
+            if (bp === 'phone') setTab('players')
+          }
+        }}
+      />
+      <div className="shrink-0 flex flex-wrap gap-x-5 gap-y-1 text-[11px]">
+        <span className={starters.length === 6 ? 'text-us' : 'text-muted'}>Starters {starters.length}/6</span>
+        <span className={setterCount === requiredSetters ? 'text-us' : 'text-opp-soft'}>Setters {setterCount}/{requiredSetters}</span>
+        <span className={liberos.length <= MAX_LIBEROS ? 'text-libero' : 'text-opp-soft'}>Liberos {liberos.length}/{MAX_LIBEROS}</span>
+        <span className="text-muted">Bench {bench.length} · Reserved {reserved.length}</span>
+      </div>
+    </div>
+  )
+
+  const roster = (
+    <FitList
+      className="flex-1"
+      items={players}
+      rowHeight={bp === 'phone' ? 44 : 30}
+      columns={2}
+      keyOf={p => p.id}
+      empty="No players on this team yet"
+      header={
+        <p className={`shrink-0 text-[10px] uppercase tracking-widest mb-2 ${selectedPosition ? 'text-opp-soft' : 'text-muted'}`}>
+          {selectedPosition ? `Assign to position ${selectedPosition}` : 'Roster · tap a court position to fill it'}
+        </p>
+      }
+      renderRow={player => {
+        const assignment = getAssignment(player.id)
+        const role = assignment?.role
+        const reason = selectedPosition ? blockReason(player) : null
+        const canAssign = selectedPosition && !role && !reason
+        return (
+          <div
+            className={`h-full flex items-center gap-1.5 px-1.5 rounded text-[11px] border-b border-line/60 ${role === 'starter' ? 'bg-card' : ''} ${reason ? 'opacity-30' : ''}`}
+            title={reason ?? undefined}
+          >
+            <span className={`w-5 shrink-0 tabular-nums ${player.isLibero ? 'text-libero' : 'text-us'}`}>{player.number}</span>
+            <span className="flex-1 min-w-0 truncate text-white">{player.name}</span>
+            {canAssign && (
+              <button
+                type="button"
+                onClick={() => { assignToPosition(player.id, selectedPosition!); if (bp === 'phone') setTab('court') }}
+                className="text-[9px] uppercase tracking-widest text-opp-soft hover:text-white pointer-coarse:min-h-11 px-1"
+              >
+                Add
+              </button>
+            )}
+            {!selectedPosition && role !== 'starter' && (
+              <div className="flex gap-0.5">
+                {rolesFor(player).map(r => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => togglePlayerRole(player.id, r)}
+                    className={`text-[9px] uppercase w-5 rounded transition-motion-fast pointer-coarse:min-h-11 pointer-coarse:w-8 ${role === r ? 'bg-line text-white' : 'text-muted hover:text-white'}`}
+                  >
+                    {r[0]}
+                  </button>
+                ))}
+              </div>
+            )}
+            {role === 'starter' && <span className="text-[9px] text-us w-3 text-right">{assignment?.rotationPosition}</span>}
+          </div>
+        )
+      }}
+    />
+  )
+
   return (
-    <div className="min-h-screen bg-[#050d0f] text-white">
-      <Navbar breadcrumbs={[
+    <PageShell
+      maxWidth="max-w-6xl"
+      breadcrumbs={[
         { label: 'Your Teams', path: '/dashboard' },
         { label: teamName, path: `/teams/${teamId}?tab=lineups` },
         { label: isEditing ? name || 'Lineup' : 'New Lineup' }
-      ]} />
-
-      <div className="max-w-5xl mx-auto px-6 py-6">
-
-        <div className="mb-5">
-          <h2 className="text-lg font-semibold">
-            {isEditing ? 'Edit Lineup' : 'New Lineup'}
-          </h2>
+      ]}
+    >
+      <header className="shrink-0 flex flex-wrap items-end gap-x-6 gap-y-3 mb-4">
+        <div className="min-w-0 mr-auto">
+          <h1 className="text-lg font-semibold">{isEditing ? 'Edit lineup' : 'New lineup'}</h1>
           {lastEdited && (
-            <p
-              className="text-[#4a6b6b] text-xs mt-0.5 cursor-help inline-block"
-              title={`Edited by ${lastEdited.name} · ${formatEditedAt(lastEdited.at)}`}
-            >
-              Edited {timeAgo(lastEdited.at)}
-            </p>
+            <p className="text-muted text-xs mt-0.5">Edited by {lastEdited.name} · {formatEditedAt(lastEdited.at)}</p>
           )}
         </div>
-
-        <div className="grid grid-cols-2 gap-4 mb-5 max-w-xl">
-          <div>
-            <label className="block text-[10px] uppercase tracking-widest text-[#4a6b6b] mb-1.5">
-              Lineup Name
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="vs Italy — VNL 2026"
-              className="w-full bg-[#0a1a1c] border border-[#0f2d30] text-white placeholder-[#4a6b6b] rounded px-3 py-2 text-sm focus:outline-none focus:border-[#2A835F] transition-colors"
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] uppercase tracking-widest text-[#4a6b6b] mb-1.5">
-              Rotation System
-            </label>
-            <div className="flex gap-1.5">
-              {ROTATION_SYSTEMS.map(sys => (
-                <button
-                  key={sys}
-                  type="button"
-                  onClick={() => setRotationSystem(sys)}
-                  className={`flex-1 py-2 rounded text-xs transition-colors ${
-                    rotationSystem === sys
-                      ? 'bg-[#2A835F] text-white'
-                      : 'border border-[#0f2d30] text-[#4a6b6b] hover:text-white hover:border-[#2A835F]'
-                  }`}
-                >
-                  {sys}
-                </button>
-              ))}
-            </div>
+        <label className="w-full sm:w-64">
+          <span className="block text-[10px] uppercase tracking-widest text-muted mb-1">Lineup name</span>
+          <input
+            type="text"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="vs Italy — VNL 2026"
+            className="w-full bg-card border border-line text-white placeholder-muted rounded px-3 py-2 text-sm focus:outline-none focus:border-us transition-motion-fast"
+          />
+        </label>
+        <div>
+          <span className="block text-[10px] uppercase tracking-widest text-muted mb-1">Rotation system</span>
+          <div className="flex gap-1.5">
+            {ROTATION_SYSTEMS.map(sys => (
+              <Pill key={sys} selected={rotationSystem === sys} onClick={() => setRotationSystem(sys)}>{sys}</Pill>
+            ))}
           </div>
         </div>
+      </header>
 
-        <div className="grid grid-cols-[1fr_380px] gap-6">
-
-          {/* COURT */}
-          <div>
-            <Court
-              players={starters.map(a => {
-                const p = getPlayer(a.playerId)!
-                return {
-                  playerId: p.id,
-                  name: p.name,
-                  number: p.number,
-                  isLibero: p.isLibero,
-                  position: a.rotationPosition!
-                }
-              })}
-              mode="edit"
-              selectedPosition={selectedPosition}
-              onPositionClick={(position) => {
-                const player = getPlayerAtPosition(position)
-                if (player) {
-                  clearPosition(position)
-                } else {
-                  setSelectedPosition(selectedPosition === position ? null : position)
-                }
-              }}
-            />
-
-            <div className="flex gap-5 mt-3 text-[11px]">
-              <span className={starters.length === 6 ? 'text-[#2A835F]' : 'text-[#4a6b6b]'}>
-                Starters {starters.length}/6
-              </span>
-              <span className={setterCount === requiredSetters ? 'text-[#2A835F]' : 'text-[#8B1A2C]'}>
-                Setters {setterCount}/{requiredSetters}
-              </span>
-              <span className="text-[#8BBB92]">
-                Libero {liberoOnCourt ? 1 : 0}/1
-              </span>
-            </div>
+      {bp === 'phone' ? (
+        <>
+          <div className="shrink-0 flex gap-2 mb-3">
+            <Pill selected={tab === 'court'} onClick={() => setTab('court')}>Court</Pill>
+            <Pill selected={tab === 'players'} onClick={() => setTab('players')}>Players</Pill>
           </div>
-
-          {/* ROSTER — two columns */}
-          <div>
-            <p className={`text-[10px] uppercase tracking-widest mb-2 ${selectedPosition ? 'text-[#8B1A2C]' : 'text-[#4a6b6b]'}`}>
-              {selectedPosition ? `Assign to position ${selectedPosition}` : 'Roster'}
-            </p>
-
-            <div className="grid grid-cols-2 gap-x-3 gap-y-px">
-              {players.map(player => {
-                const assignment = getAssignment(player.id)
-                const role = assignment?.role
-                const reason = selectedPosition ? blockReason(player, selectedPosition) : null
-                const canAssign = selectedPosition && !role && !reason
-
-                return (
-                  <div
-                    key={player.id}
-                    className={`flex items-center gap-1.5 px-1.5 py-1 rounded text-[11px] ${
-                      role === 'starter' ? 'bg-[#0a1a1c]' : ''
-                    } ${reason ? 'opacity-30' : ''}`}
-                    title={reason ?? undefined}
-                  >
-                    <span className={`w-5 shrink-0 font-mono ${player.isLibero ? 'text-[#8BBB92]' : 'text-[#2A835F]'}`}>
-                      {player.number}
-                    </span>
-                    <span className="flex-1 min-w-0 truncate text-white/90">
-                      {player.name}
-                    </span>
-
-                    {canAssign && (
-                      <button
-                        type="button"
-                        onClick={() => assignToPosition(player.id, selectedPosition!)}
-                        className="text-[9px] uppercase tracking-widest text-[#8B1A2C] hover:text-[#b02a3f]"
-                      >
-                        Add
-                      </button>
-                    )}
-
-                    {!selectedPosition && role !== 'starter' && (
-                      <div className="flex gap-0.5">
-                        {(['bench', 'reserved'] as const).map(r => (
-                          <button
-                            key={r}
-                            type="button"
-                            onClick={() => togglePlayerRole(player.id, r)}
-                            className={`text-[9px] uppercase w-4 rounded transition-colors ${
-                              role === r ? 'bg-[#0f2d30] text-white' : 'text-[#4a6b6b] hover:text-white'
-                            }`}
-                          >
-                            {r[0]}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {role === 'starter' && (
-                      <span className="text-[9px] text-[#2A835F] w-3 text-right">
-                        {assignment?.rotationPosition}
-                      </span>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-
-            <p className="mt-3 pt-2 border-t border-[#0f2d30] text-[10px] text-[#4a6b6b]">
-              Bench {bench.length} · Reserved {reserved.length}
-            </p>
-          </div>
+          <div className="flex-1 min-h-0 flex flex-col">{tab === 'court' ? court : roster}</div>
+        </>
+      ) : (
+        <div className="flex-1 min-h-0 grid grid-cols-[minmax(0,7fr)_minmax(0,5fr)] gap-6">
+          <div className="min-h-0 flex flex-col">{court}</div>
+          <div className="min-h-0 flex flex-col">{roster}</div>
         </div>
+      )}
 
-        {error && <p className="text-[#8B1A2C] text-sm mt-3">{error}</p>}
+      {error && <p className="shrink-0 text-opp-soft text-sm mt-3">{error}</p>}
 
-        <div className="flex justify-end gap-3 mt-4">
-          <button
-            type="button"
-            onClick={() => navigate(`/teams/${teamId}?tab=lineups`)}
-            className="px-6 border border-[#8B1A2C] text-[#8B1A2C] py-2 rounded text-sm hover:bg-[#8B1A2C] hover:text-white transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="px-6 bg-[#2A835F] text-white py-2 rounded text-sm font-medium hover:bg-[#235a45] transition-colors disabled:opacity-50"
-          >
-            {submitting ? 'Saving...' : isEditing ? 'Save Changes' : 'Create Lineup'}
-          </button>
-        </div>
-
+      <div className="shrink-0 flex justify-end gap-3 pt-4 mt-3 border-t border-line">
+        <Button tone="danger" onClick={() => navigate(`/teams/${teamId}?tab=lineups`)}>Cancel</Button>
+        <Button tone="primary" onClick={handleSubmit} disabled={submitting}>
+          {submitting ? 'Saving…' : isEditing ? 'Save changes' : 'Create lineup'}
+        </Button>
       </div>
-    </div>
+    </PageShell>
   )
 }
 

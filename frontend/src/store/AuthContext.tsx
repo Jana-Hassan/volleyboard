@@ -1,35 +1,24 @@
-import { createContext, useState, useEffect } from 'react'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { User } from '../types'
 import api from '../lib/api'
+import { AuthContext } from './auth-context'
 
-interface AuthContextType {
-  user: User | null
-  token: string | null
-  loading: boolean
-  login: (email: string, password: string) => Promise<void>
-  register: (name: string, email: string, password: string) => Promise<void>
-  logout: () => void
+const readSaved = (): { token: string | null; user: User | null } => {
+  const savedToken = localStorage.getItem('token')
+  const savedUser = localStorage.getItem('user')
+  if (!savedToken || !savedUser) return { token: null, user: null }
+  try {
+    return { token: savedToken, user: JSON.parse(savedUser) as User }
+  } catch {
+    return { token: null, user: null }
+  }
 }
 
-export const AuthContext = createContext<AuthContextType | null>(null)
-
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null)
-  const [token, setToken] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const savedToken = localStorage.getItem('token')
-    const savedUser = localStorage.getItem('user')
-
-    if (savedToken && savedUser) {
-      setToken(savedToken)
-      setUser(JSON.parse(savedUser))
-    }
-
-    setLoading(false)
-  }, [])
+  const [saved] = useState(readSaved)
+  const [user, setUser] = useState<User | null>(saved.user)
+  const [token, setToken] = useState<string | null>(saved.token)
 
   const login = async (email: string, password: string) => {
     const response = await api.post('/auth/login', { email, password })
@@ -61,7 +50,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, token, loading: false, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   )

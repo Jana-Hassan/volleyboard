@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma'
 import { VALID_MEMBER_ROLES } from '../lib/volleyball.constants'
+import { requirePermission } from './team-access'
 
 export const createTeam = async (userId: string, name: string, logoUrl?: string) => {
   const team = await prisma.team.create({
@@ -100,12 +101,7 @@ export const getTeamById = async (teamId: string, userId: string) => {
 }
 
 export const updateTeam = async (teamId: string, userId: string, data: { name?: string, logoUrl?: string }) => {
-  const member = await prisma.teamMember.findUnique({
-    where: { teamId_userId: { teamId, userId } }
-  })
-
-  if (!member) throw new Error('FORBIDDEN')
-  if (member.role !== 'manager') throw new Error('FORBIDDEN')
+  await requirePermission(teamId, userId, 'team.manage')
 
   const team = await prisma.team.update({
     where: { id: teamId },
@@ -116,12 +112,7 @@ export const updateTeam = async (teamId: string, userId: string, data: { name?: 
 }
 
 export const deleteTeam = async (teamId: string, userId: string) => {
-  const member = await prisma.teamMember.findUnique({
-    where: { teamId_userId: { teamId, userId } }
-  })
-
-  if (!member) throw new Error('FORBIDDEN')
-  if (member.role !== 'manager') throw new Error('FORBIDDEN')
+  await requirePermission(teamId, userId, 'team.manage')
 
   await prisma.team.delete({
     where: { id: teamId }
@@ -134,15 +125,9 @@ export const inviteMember = async (
   inviteeEmail: string,
   role: string = 'analyst'
 ) => {
-  const member = await prisma.teamMember.findUnique({
-    where: { teamId_userId: { teamId, userId } }
-  })
+  await requirePermission(teamId, userId, 'staff.manage')
 
-  if (!member) throw new Error('FORBIDDEN')
-  if (member.role !== 'manager') throw new Error('FORBIDDEN')
-  
-if (!VALID_MEMBER_ROLES.includes(role)) throw new Error('INVALID_ROLE')
-  
+  if (!VALID_MEMBER_ROLES.includes(role)) throw new Error('INVALID_ROLE')
 
   const invitee = await prisma.user.findUnique({
     where: { email: inviteeEmail }
@@ -176,15 +161,20 @@ if (!VALID_MEMBER_ROLES.includes(role)) throw new Error('INVALID_ROLE')
   return newMember
 }
 
-export const removeMember = async (teamId: string, userId: string, memberId: string) => {
-  const member = await prisma.teamMember.findUnique({
-    where: { teamId_userId: { teamId, userId } }
-  })
+export const removeMember = async (teamId: string, userId: string, targetUserId: string) => {
+  await requirePermission(teamId, userId, 'staff.manage')
 
-  if (!member) throw new Error('FORBIDDEN')
-  if (member.role !== 'manager') throw new Error('FORBIDDEN')
+  const target = await prisma.teamMember.findUnique({
+    where: { teamId_userId: { teamId, userId: targetUserId } }
+  })
+  if (!target) throw new Error('MEMBER_NOT_FOUND')
+
+  if (target.role === 'manager') {
+    const managers = await prisma.teamMember.count({ where: { teamId, role: 'manager' } })
+    if (managers <= 1) throw new Error('LAST_MANAGER')
+  }
 
   await prisma.teamMember.delete({
-    where: { teamId_userId: { teamId, userId: memberId } }
+    where: { teamId_userId: { teamId, userId: targetUserId } }
   })
 }

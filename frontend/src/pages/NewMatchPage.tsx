@@ -1,8 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router'
+import { useEffect, useState } from 'react'
+import type { FormEvent, ReactNode } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import api from '../lib/api'
 import type { Lineup } from '../types'
 import PageShell from '../components/PageShell'
+import Button from '../components/ui/Button'
+import { useBreakpoint } from '../hooks/useBreakpoint'
 
 interface NationalTeam {
   name: string
@@ -17,305 +20,213 @@ interface Competitions {
   other: string[]
 }
 
+const GROUPS: { key: keyof Competitions; label: string }[] = [
+  { key: 'international', label: 'International' },
+  { key: 'club', label: 'Club' },
+  { key: 'other', label: 'Other' }
+]
+
+const input = 'w-full bg-card border border-line text-white placeholder-muted rounded px-3 py-2.5 text-sm focus:outline-none focus:border-us transition-motion-fast'
+
+const Field = ({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) => (
+  <div>
+    <p className="text-[10px] uppercase tracking-widest text-muted mb-1.5">{label}</p>
+    {children}
+    {hint && <p className="text-muted text-xs mt-1">{hint}</p>}
+  </div>
+)
+
 const NewMatchPage = () => {
   const { teamId } = useParams<{ teamId: string }>()
   const navigate = useNavigate()
-  const dropdownRef = useRef<HTMLDivElement>(null)
-
+  const bp = useBreakpoint()
   const [lineups, setLineups] = useState<Lineup[]>([])
   const [teamName, setTeamName] = useState('')
   const [nationalTeams, setNationalTeams] = useState<NationalTeam[]>([])
-  const [competitions, setCompetitions] = useState<Competitions>({
-    international: [], club: [], other: []
-  })
-  const [loading, setLoading] = useState(true)
+  const [competitions, setCompetitions] = useState<Competitions>({ international: [], club: [], other: [] })
+  const [loaded, setLoaded] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [step, setStep] = useState(0)
 
-  const [opponentInput, setOpponentInput] = useState('')
-  const [showDropdown, setShowDropdown] = useState(false)
+  const [opponent, setOpponent] = useState('')
+  const [suggesting, setSuggesting] = useState(false)
   const [competition, setCompetition] = useState('Friendly')
   const [customCompetition, setCustomCompetition] = useState('')
-  const [scheduledDate, setScheduledDate] = useState('')
-  const [scheduledTime, setScheduledTime] = useState('')
+  const [date, setDate] = useState('')
+  const [time, setTime] = useState('')
   const [lineupId, setLineupId] = useState('')
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [teamRes, lineupsRes, teamsRes, compsRes] = await Promise.all([
-          api.get(`/teams/${teamId}`),
-          api.get(`/teams/${teamId}/lineups`),
-          api.get('/reference/teams'),
-          api.get('/reference/competitions')
-        ])
-        setTeamName(teamRes.data.name)
-        setLineups(lineupsRes.data)
-        setNationalTeams(teamsRes.data)
-        setCompetitions(compsRes.data)
-        if (lineupsRes.data.length > 0) {
-          setLineupId(lineupsRes.data[0].id)
-        }
-      } catch {
-        navigate(`/teams/${teamId}`)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchData()
+    Promise.all([
+      api.get(`/teams/${teamId}`),
+      api.get(`/teams/${teamId}/lineups`),
+      api.get('/reference/teams'),
+      api.get('/reference/competitions')
+    ])
+      .then(([t, l, n, c]) => {
+        setTeamName(t.data.name)
+        setLineups(l.data)
+        setNationalTeams(n.data)
+        setCompetitions(c.data)
+        if (l.data.length > 0) setLineupId(l.data[0].id)
+        setLoaded(true)
+      })
+      .catch(() => navigate(`/teams/${teamId}`))
   }, [teamId, navigate])
 
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setShowDropdown(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-  const filteredTeams = opponentInput.length > 0
-    ? nationalTeams.filter(t =>
-        t.name.toLowerCase().includes(opponentInput.toLowerCase()) ||
-        t.code.toLowerCase().includes(opponentInput.toLowerCase())
-      )
+  const query = opponent.trim().toLowerCase()
+  const matchesFor = query
+    ? nationalTeams.filter(t => t.name.toLowerCase().includes(query) || t.code.toLowerCase().includes(query)).slice(0, 6)
     : []
 
-  const handleOpponentSelect = (team: NationalTeam) => {
-    setOpponentInput(team.name)
-    setShowDropdown(false)
-  }
-
-  const allCompetitions = [
-    ...competitions.international,
-    ...competitions.club,
-    ...competitions.other
-  ]
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const submit = async (e?: FormEvent) => {
+    e?.preventDefault()
     setError('')
-
-    if (!opponentInput.trim()) {
-      setError('Opponent name is required')
-      return
-    }
-    if (!lineupId) {
-      setError('Please select a lineup')
-      return
-    }
-
-    const finalCompetition = customCompetition.trim() || competition
-    const scheduledAt = scheduledDate
-      ? `${scheduledDate}T${scheduledTime || '00:00'}`
-      : null
-
+    if (!opponent.trim()) return setError('Opponent name is required')
+    if (!lineupId) return setError('Please select a lineup')
     setSubmitting(true)
     try {
       await api.post(`/teams/${teamId}/matches`, {
-        opponentName: opponentInput.trim(),
-        competition: finalCompetition,
-        scheduledAt,
+        opponentName: opponent.trim(),
+        competition: customCompetition.trim() || competition,
+        scheduledAt: date ? `${date}T${time || '00:00'}` : null,
         lineupId
       })
       navigate(`/teams/${teamId}?tab=matches`)
     } catch {
       setError('Failed to create match')
-    } finally {
       setSubmitting(false)
     }
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#050d0f] flex items-center justify-center">
-        <span className="text-[#4a6b6b] text-sm">Loading...</span>
+  if (!loaded) return <div className="h-dvh bg-surface flex items-center justify-center text-muted text-sm">Loading…</div>
+
+  const opponentField = (
+    <Field label="Opponent" hint="Pick a national team or type any club name">
+      <div className="relative">
+        <input
+          className={input}
+          value={opponent}
+          onChange={e => { setOpponent(e.target.value); setSuggesting(true) }}
+          onFocus={() => setSuggesting(true)}
+          onBlur={() => setTimeout(() => setSuggesting(false), 120)}
+          placeholder="Italy, ITA, Sir Safety Perugia…"
+        />
+        {suggesting && matchesFor.length > 0 && (
+          <div className="absolute z-10 top-full inset-x-0 mt-1 bg-card border border-line rounded">
+            {matchesFor.map(t => (
+              <button
+                key={t.code}
+                type="button"
+                onMouseDown={() => { setOpponent(t.name); setSuggesting(false) }}
+                className="w-full flex items-center gap-3 px-3 h-9 pointer-coarse:h-11 text-left hover:bg-line transition-motion-fast"
+              >
+                <span>{t.flag}</span>
+                <span className="text-white text-sm">{t.name}</span>
+                <span className="text-muted text-xs ml-auto">{t.code}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-    )
-  }
+    </Field>
+  )
+
+  const lineupField = (
+    <Field label="Lineup">
+      {lineups.length === 0 ? (
+        <div className="border border-line rounded px-3 py-2.5 text-sm">
+          <span className="text-muted">No lineups yet. </span>
+          <button type="button" onClick={() => navigate(`/teams/${teamId}/lineups/new`)} className="text-us hover:text-libero">Create one first →</button>
+        </div>
+      ) : (
+        <select className={input} value={lineupId} onChange={e => setLineupId(e.target.value)}>
+          {lineups.map(l => <option key={l.id} value={l.id}>{l.name} · {l.rotationSystem}</option>)}
+        </select>
+      )}
+    </Field>
+  )
+
+  const whenField = (
+    <Field label="Date & time" hint="Optional, leave empty if not confirmed">
+      <div className="flex gap-2">
+        <input type="date" className={`${input} [color-scheme:dark]`} value={date} onChange={e => setDate(e.target.value)} />
+        <input type="time" className={`${input} w-32 [color-scheme:dark]`} value={time} onChange={e => setTime(e.target.value)} />
+      </div>
+    </Field>
+  )
+
+  const competitionField = (
+    <Field label="Competition">
+      <div className="space-y-3">
+        {GROUPS.filter(g => competitions[g.key]?.length).map(g => (
+          <div key={g.key}>
+            <p className="text-muted text-xs mb-1.5">{g.label}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {competitions[g.key].map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => { setCompetition(c); setCustomCompetition('') }}
+                  className={`px-2.5 py-1 rounded text-[10px] uppercase tracking-widest transition-motion-fast pointer-coarse:min-h-11 ${
+                    competition === c && !customCompetition ? 'bg-us text-white' : 'border border-line text-muted hover:text-white hover:border-us'
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+        <input className={input} value={customCompetition} onChange={e => setCustomCompetition(e.target.value)} placeholder="Or type another competition…" />
+      </div>
+    </Field>
+  )
+
+  const steps = [
+    { title: 'Opponent', body: <>{opponentField}{lineupField}</> },
+    { title: 'Competition', body: competitionField },
+    { title: 'When', body: whenField }
+  ]
 
   return (
     <PageShell
-      maxWidth="max-w-lg"
+      maxWidth="max-w-4xl"
       breadcrumbs={[
         { label: 'Your Teams', path: '/dashboard' },
         { label: teamName, path: `/teams/${teamId}?tab=matches` },
         { label: 'New Match' }
       ]}
     >
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold">Schedule a Match</h2>
-          <p className="text-[#4a6b6b] text-sm mt-1">
-            Add an upcoming match for your team
-          </p>
+      <header className="shrink-0 mb-5">
+        <h1 className="text-xl font-semibold">Schedule a match</h1>
+        <p className="text-muted text-sm mt-1">
+          {bp === 'phone' ? `Step ${step + 1} of ${steps.length} · ${steps[step].title}` : 'Add an upcoming match for your team'}
+        </p>
+      </header>
+
+      <form onSubmit={e => { if (bp === 'phone' && step < steps.length - 1) { e.preventDefault(); setStep(step + 1) } else submit(e) }} className="flex-1 min-h-0 flex flex-col">
+        {bp === 'phone' ? (
+          <div className="flex-1 min-h-0 space-y-5">{steps[step].body}</div>
+        ) : (
+          <div className="flex-1 min-h-0 grid grid-cols-2 gap-8 content-start">
+            <div className="space-y-5">{opponentField}{whenField}{lineupField}</div>
+            <div>{competitionField}</div>
+          </div>
+        )}
+
+        {error && <p className="shrink-0 text-opp-soft text-sm mb-2">{error}</p>}
+
+        <div className="shrink-0 flex gap-3 pt-4 border-t border-line">
+          {bp === 'phone' && step > 0
+            ? <Button tone="neutral" size="lg" className="flex-1" onClick={() => setStep(step - 1)}>Back</Button>
+            : <Button tone="danger" size="lg" className="flex-1" onClick={() => navigate(`/teams/${teamId}?tab=matches`)}>Cancel</Button>}
+          {bp === 'phone' && step < steps.length - 1
+            ? <Button tone="primary" size="lg" className="flex-1" onClick={() => setStep(step + 1)}>Next</Button>
+            : <Button tone="primary" size="lg" className="flex-1" type="submit" disabled={submitting || lineups.length === 0}>{submitting ? 'Scheduling…' : 'Schedule match'}</Button>}
         </div>
-
-        <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1">
-          <div className="flex-1 min-h-0 overflow-y-auto space-y-5 pr-1">
-
-          {/* Opponent */}
-          <div>
-            <label className="block text-xs uppercase tracking-widest text-[#4a6b6b] mb-2">
-              Opponent
-            </label>
-            <div className="relative" ref={dropdownRef}>
-              <input
-                type="text"
-                value={opponentInput}
-                onChange={e => {
-                  setOpponentInput(e.target.value)
-                  setShowDropdown(true)
-                }}
-                onFocus={() => setShowDropdown(true)}
-                placeholder="Search by country name or code (e.g. Italy, ITA)"
-                className="w-full bg-[#0a1a1c] border border-[#0f2d30] text-white placeholder-[#4a6b6b] rounded px-4 py-3 text-sm focus:outline-none focus:border-[#2A835F] transition-colors"
-              />
-              {showDropdown && filteredTeams.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-[#0a1a1c] border border-[#0f2d30] rounded overflow-hidden z-10 max-h-48 overflow-y-auto">
-                  {filteredTeams.map(team => (
-                    <div
-                      key={team.code}
-                      onClick={() => handleOpponentSelect(team)}
-                      className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-[#0f2d30] transition-colors"
-                    >
-                      <span className="text-lg">{team.flag}</span>
-                      <span className="text-white text-sm">{team.name}</span>
-                      <span className="text-[#4a6b6b] text-xs ml-auto">{team.code}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <p className="text-[#4a6b6b] text-xs mt-1">
-              Select a national team or type any club team name
-            </p>
-          </div>
-
-          {/* Competition */}
-          <div>
-            <label className="block text-xs uppercase tracking-widest text-[#4a6b6b] mb-2">
-              Competition
-            </label>
-
-            {['International', 'Club', 'Other'].map((group, i) => {
-              const groupKey = group.toLowerCase() as keyof Competitions
-              const items = competitions[groupKey]
-              if (!items?.length) return null
-              return (
-                <div key={group} className={i > 0 ? 'mt-3' : ''}>
-                  <p className="text-[#4a6b6b] text-xs mb-2">{group}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {items.map(comp => (
-                      <button
-                        key={comp}
-                        type="button"
-                        onClick={() => {
-                          setCompetition(comp)
-                          setCustomCompetition('')
-                        }}
-                        className={`px-3 py-1 rounded text-xs uppercase tracking-widest transition-colors ${
-                          competition === comp && !customCompetition
-                            ? 'bg-[#2A835F] text-white'
-                            : 'border border-[#0f2d30] text-[#4a6b6b] hover:text-white hover:border-[#2A835F]'
-                        }`}
-                      >
-                        {comp}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )
-            })}
-
-            <input
-              type="text"
-              value={customCompetition}
-              onChange={e => setCustomCompetition(e.target.value)}
-              placeholder="Or type a custom competition..."
-              className="w-full mt-3 bg-[#0a1a1c] border border-[#0f2d30] text-white placeholder-[#4a6b6b] rounded px-4 py-3 text-sm focus:outline-none focus:border-[#2A835F] transition-colors"
-            />
-          </div>
-
-          {/* Date & Time */}
-          <div>
-            <label className="block text-xs uppercase tracking-widest text-[#4a6b6b] mb-2">
-              Date & Time
-            </label>
-            <div className="flex gap-3">
-              <input
-                type="date"
-                value={scheduledDate}
-                onChange={e => setScheduledDate(e.target.value)}
-                className="flex-1 bg-[#0a1a1c] border border-[#0f2d30] text-white rounded px-4 py-3 text-sm focus:outline-none focus:border-[#2A835F] transition-colors [color-scheme:dark]"
-              />
-              <input
-                type="time"
-                value={scheduledTime}
-                onChange={e => setScheduledTime(e.target.value)}
-                className="w-32 bg-[#0a1a1c] border border-[#0f2d30] text-white rounded px-4 py-3 text-sm focus:outline-none focus:border-[#2A835F] transition-colors [color-scheme:dark]"
-              />
-            </div>
-            <p className="text-[#4a6b6b] text-xs mt-1">
-              Optional — leave empty if date not confirmed
-            </p>
-          </div>
-
-          {/* Lineup */}
-          <div>
-            <label className="block text-xs uppercase tracking-widest text-[#4a6b6b] mb-2">
-              Lineup
-            </label>
-            {lineups.length === 0 ? (
-              <div className="border border-[#0f2d30] rounded px-4 py-3">
-                <p className="text-[#4a6b6b] text-sm">No lineups yet.</p>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/teams/${teamId}/lineups/new`)}
-                  className="text-[#2A835F] text-sm hover:text-[#8BBB92] transition-colors mt-1"
-                >
-                  Create a lineup first →
-                </button>
-              </div>
-            ) : (
-              <select
-                value={lineupId}
-                onChange={e => setLineupId(e.target.value)}
-                className="w-full bg-[#0a1a1c] border border-[#0f2d30] text-white rounded px-4 py-3 text-sm focus:outline-none focus:border-[#2A835F] transition-colors"
-              >
-                {lineups.map(lineup => (
-                  <option key={lineup.id} value={lineup.id}>
-                    {lineup.name} · {lineup.rotationSystem}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-
-          {error && (
-            <p className="text-[#8B1A2C] text-sm">{error}</p>
-          )}
-
-          </div>
-
-          <div className="flex gap-3 pt-4 shrink-0">
-            <button
-              type="button"
-              onClick={() => navigate(`/teams/${teamId}?tab=matches`)}
-              className="flex-1 border border-[#8B1A2C] text-[#8B1A2C] py-3 rounded text-sm hover:bg-[#8B1A2C] hover:text-white transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting || lineups.length === 0}
-              className="flex-1 bg-[#2A835F] text-white py-3 rounded text-sm font-medium hover:bg-[#235a45] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {submitting ? 'Scheduling...' : 'Schedule Match'}
-            </button>
-          </div>
-
-        </form>
+      </form>
     </PageShell>
   )
 }

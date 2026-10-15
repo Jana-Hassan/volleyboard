@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './store/AuthContext'
 import { useAuth } from './hooks/useAuth'
@@ -9,14 +10,18 @@ import TeamPage from './pages/TeamPage'
 import LineupPage from './pages/LineupPage'
 import MatchPage from './pages/MatchPage'
 import NewMatchPage from './pages/NewMatchPage'
+import PlayerProfilePage from './pages/PlayerProfilePage'
+import NewTeamPage from './pages/NewTeamPage'
+
+const MatchReportPage = lazy(() => import('./pages/MatchReportPage'))
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth()
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#050d0f] flex items-center justify-center">
-        <div className="text-[#2A835F] text-sm tracking-widest uppercase">
+      <div className="h-dvh bg-surface flex items-center justify-center">
+        <div className="text-us text-sm tracking-widest uppercase">
           Loading...
         </div>
       </div>
@@ -49,6 +54,14 @@ const AppRoutes = () => {
         }
       />
       <Route
+        path="/teams/new"
+        element={
+          <ProtectedRoute>
+            <NewTeamPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/teams/:teamId/matches/new"
         element={
           <ProtectedRoute>
@@ -73,10 +86,28 @@ const AppRoutes = () => {
         }
       />
       <Route
+        path="/teams/:teamId/players/:playerId"
+        element={
+          <ProtectedRoute>
+            <PlayerProfilePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/teams/:teamId"
         element={
           <ProtectedRoute>
             <TeamPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/matches/:matchId/report"
+        element={
+          <ProtectedRoute>
+            <Suspense fallback={<div className="h-dvh bg-surface" />}>
+              <MatchReportPage />
+            </Suspense>
           </ProtectedRoute>
         }
       />

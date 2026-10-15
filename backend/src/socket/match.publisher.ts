@@ -6,7 +6,15 @@ import {
   SET_FINISHED,
   MATCH_FINISHED,
   NEXT_SET_STARTED,
-  MATCH_ENDED
+  MATCH_ENDED,
+  LIBERO_CHANGED,
+  SUBSTITUTION_MADE,
+  TIMEOUT_CALLED,
+  CHALLENGE_CALLED,
+  CHALLENGE_RESOLVED,
+  EVENT_UNDONE,
+  EVENT_LOGGED,
+  OPPONENT_ROSTER_CHANGED
 } from '../events/domain-events'
 
 /**
@@ -41,6 +49,38 @@ export const registerMatchPublisher = (io: Server): void => {
 
   subscribe(MATCH_ENDED, (matchId, payload) => {
     io.to(room(matchId)).emit(MATCH_ENDED, payload)
+  })
+
+  subscribe(LIBERO_CHANGED, (matchId, payload) => {
+    io.to(room(matchId)).emit(LIBERO_CHANGED, payload)
+  })
+
+  subscribe(SUBSTITUTION_MADE, (matchId, payload) => {
+    io.to(room(matchId)).emit(SUBSTITUTION_MADE, payload)
+  })
+
+  subscribe(TIMEOUT_CALLED, (matchId, payload) => {
+    io.to(room(matchId)).emit(TIMEOUT_CALLED, payload)
+  })
+
+  subscribe(CHALLENGE_CALLED, (matchId, payload) => {
+    io.to(room(matchId)).emit(CHALLENGE_CALLED, payload)
+  })
+
+  subscribe(CHALLENGE_RESOLVED, (matchId, payload) => {
+    io.to(room(matchId)).emit(CHALLENGE_RESOLVED, payload)
+  })
+
+  subscribe(EVENT_UNDONE, (matchId, payload) => {
+    io.to(room(matchId)).emit(EVENT_UNDONE, payload)
+  })
+
+  subscribe(EVENT_LOGGED, (matchId, payload) => {
+    io.to(room(matchId)).emit(EVENT_LOGGED, payload)
+  })
+
+  subscribe(OPPONENT_ROSTER_CHANGED, (matchId, payload) => {
+    io.to(room(matchId)).emit(OPPONENT_ROSTER_CHANGED, payload)
   })
 
   console.log('Match domain event publisher registered')

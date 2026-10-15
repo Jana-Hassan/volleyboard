@@ -1,9 +1,26 @@
+import { useState } from 'react'
+import type { AnimationEvent } from 'react'
+import { initialPresence, reconcilePresence, settlePresence } from '../lib/court/presence'
+import type { PresenceItem } from '../lib/court/presence'
+
 export interface CourtPlayer {
   playerId: string
   name: string
   number: string
   isLibero: boolean
   position: number
+}
+
+export interface ZoneShade {
+  intensity: number
+  label: string
+  sub: string
+}
+
+export interface CourtCue {
+  playerId: string
+  tone: 'us' | 'opp'
+  key: string
 }
 
 interface CourtProps {
@@ -15,6 +32,10 @@ interface CourtProps {
   onPositionClick?: (position: number) => void
   onPlayerClick?: (playerId: string) => void
   showRotationLabel?: number
+  cue?: CourtCue | null
+  fit?: 'width' | 'contain'
+  zoneOverlay?: Record<number, ZoneShade>
+  showFooter?: boolean
   className?: string
 }
 
@@ -32,9 +53,14 @@ const POSITION_COORDS: Record<number, { x: number; y: number }> = {
   1: { x: COURT.x + COURT.w * 0.82, y: COURT.y + COURT.h * 0.78 }
 }
 
+const POSITIONS = [4, 3, 2, 5, 6, 1]
 const TOKEN_R = 22
+const HIT_R = TOKEN_R + 6
 const LINE = 'rgba(255,255,255,0.85)'
-const SELECT_COLOR = '#ffffff'
+
+const keyOf = (p: CourtPlayer) => p.playerId
+
+const shortName = (name: string) => (name.length > 13 ? name.slice(0, 12) + '…' : name)
 
 const Court = ({
   players,
@@ -45,52 +71,86 @@ const Court = ({
   onPositionClick,
   onPlayerClick,
   showRotationLabel,
+  cue = null,
+  fit = 'width',
+  zoneOverlay,
+  showFooter = true,
   className = ''
 }: CourtProps) => {
+  const [shown, setShown] = useState<PresenceItem<CourtPlayer>[]>(() => initialPresence(players, keyOf))
+  const [lastPlayers, setLastPlayers] = useState(players)
 
-  const playerAt = (position: number) => players.find(p => p.position === position)
+  if (players !== lastPlayers) {
+    setLastPlayers(players)
+    setShown(prev => reconcilePresence(prev, players, keyOf))
+  }
+
   const isEditable = mode === 'edit' && Boolean(onPositionClick)
   const isSelectable = mode === 'live' && Boolean(onPlayerClick)
+  const occupied = new Set(shown.filter(s => s.state !== 'exiting').map(s => s.item.position))
+
+  const settle = (key: string) => (event: AnimationEvent<SVGGElement>) => {
+    if (event.target !== event.currentTarget) return
+    setShown(prev => settlePresence(prev, key))
+  }
+
+  const fitClasses = fit === 'contain'
+    ? { root: 'flex flex-col h-full min-h-0 bg-freezone', svg: 'w-full flex-1 min-h-0' }
+    : { root: 'bg-surface', svg: 'w-full' }
 
   return (
-    <div className={`bg-[#050d0f] border border-[#0f2d30] rounded overflow-hidden ${className}`}>
-      <svg viewBox={`0 0 ${VB.w} ${VB.h}`} className="w-full block" role="img" aria-label="Volleyball court">
+    <div className={`border border-line rounded overflow-hidden ${fitClasses.root} ${className}`}>
+      <svg viewBox={`0 0 ${VB.w} ${VB.h}`} className={`block ${fitClasses.svg}`} role="img" aria-label="Volleyball court">
 
-        {/* net mesh pattern */}
         <defs>
           <pattern id="netMesh" width="5" height="5" patternUnits="userSpaceOnUse">
             <path d="M 5 0 L 0 0 0 5" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.6" />
           </pattern>
         </defs>
 
-        {/* free zone */}
-        <rect x="0" y="0" width={VB.w} height={VB.h} fill="#0d3028" />
+        <rect x="0" y="0" width={VB.w} height={VB.h} className="fill-freezone" />
 
-        {/* court surface */}
-        <rect x={COURT.x} y={COURT.y} width={COURT.w} height={COURT.h} fill="#B85C38" />
+        <rect x={COURT.x} y={COURT.y} width={COURT.w} height={COURT.h} className="fill-court" />
 
-        {/* front zone slightly lighter */}
+        {zoneOverlay && [4, 3, 2, 5, 6, 1].map((zone, i) => {
+          const shade = zoneOverlay[zone]
+          const col = i % 3
+          const front = i < 3
+          const x = COURT.x + (COURT.w / 3) * col
+          const y = front ? COURT.y : ATTACK_LINE_Y
+          const h = front ? ATTACK_LINE_Y - COURT.y : COURT.y + COURT.h - ATTACK_LINE_Y
+          return (
+            <g key={`zone-${zone}`}>
+              <rect x={x + 1} y={y + 1} width={COURT.w / 3 - 2} height={h - 2} className="fill-us transition-motion" fillOpacity={shade ? 0.12 + 0.68 * shade.intensity : 0} />
+              <text x={x + 8} y={y + 12} fontSize="7" fill="rgba(255,255,255,0.55)" letterSpacing="1">Z{zone}</text>
+              {shade && (
+                <>
+                  <text x={x + COURT.w / 6} y={y + h / 2 + 2} fontSize="16" fontWeight={700} textAnchor="middle" className="fill-select">{shade.label}</text>
+                  <text x={x + COURT.w / 6} y={y + h / 2 + 15} fontSize="8" textAnchor="middle" fill="rgba(255,255,255,0.75)">{shade.sub}</text>
+                </>
+              )}
+            </g>
+          )
+        })}
+
         <rect
           x={COURT.x} y={COURT.y}
           width={COURT.w} height={ATTACK_LINE_Y - COURT.y}
           fill="rgba(0,0,0,0.06)"
         />
 
-        {/* court boundary */}
         <rect
           x={COURT.x} y={COURT.y}
           width={COURT.w} height={COURT.h}
           fill="none" stroke={LINE} strokeWidth="2"
         />
 
-        {/* attack line */}
         <line
           x1={COURT.x} y1={ATTACK_LINE_Y}
           x2={COURT.x + COURT.w} y2={ATTACK_LINE_Y}
           stroke={LINE} strokeWidth="1.8"
         />
 
-        {/* dashed attack-line extensions into free zone */}
         <line
           x1={COURT.x - 16} y1={ATTACK_LINE_Y} x2={COURT.x} y2={ATTACK_LINE_Y}
           stroke="rgba(255,255,255,0.55)" strokeWidth="1.5" strokeDasharray="4 4"
@@ -100,7 +160,6 @@ const Court = ({
           stroke="rgba(255,255,255,0.55)" strokeWidth="1.5" strokeDasharray="4 4"
         />
 
-        {/* net band across the top */}
         <rect
           x={COURT.x - 14} y={COURT.y - 12}
           width={COURT.w + 28} height="12"
@@ -112,7 +171,6 @@ const Court = ({
           fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.2"
         />
 
-        {/* net antennae */}
         <line
           x1={COURT.x} y1={COURT.y - 20} x2={COURT.x} y2={COURT.y + 2}
           stroke="rgba(255,255,255,0.75)" strokeWidth="1.6"
@@ -122,7 +180,6 @@ const Court = ({
           stroke="rgba(255,255,255,0.75)" strokeWidth="1.6"
         />
 
-        {/* sideline extension ticks */}
         <line
           x1={COURT.x} y1={COURT.y + COURT.h} x2={COURT.x} y2={COURT.y + COURT.h + 14}
           stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" strokeDasharray="3 3"
@@ -133,7 +190,6 @@ const Court = ({
           stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" strokeDasharray="3 3"
         />
 
-        {/* labels */}
         <text x={COURT.x - 20} y={ATTACK_LINE_Y - 4} fontSize="6.5" fill="rgba(255,255,255,0.4)" textAnchor="end">
           3m
         </text>
@@ -144,88 +200,124 @@ const Court = ({
           SERVICE ZONE
         </text>
 
-        {/* players */}
-        {[4, 3, 2, 5, 6, 1].map(position => {
-          const coord = POSITION_COORDS[position]
-          const player = playerAt(position)
+        {mode === 'edit' && POSITIONS.filter(position => !occupied.has(position)).map(position => {
+          const { x, y } = POSITION_COORDS[position]
           const isSelected = selectedPosition === position
-          const isPlayerSelected = player && selectedPlayerId === player.playerId
-          const isServer = servingPosition === position
-
-          const ringColor = isPlayerSelected
-            ? '#ffffff'
-            : player
-              ? player.isLibero ? '#8BBB92' : '#2A835F'
-              : isSelected ? SELECT_COLOR : 'rgba(255,255,255,0.35)'
-
-          const handleClick = () => {
-            if (isEditable) onPositionClick!(position)
-            else if (isSelectable && player) onPlayerClick!(player.playerId)
-          }
-
           return (
             <g
-              key={position}
-              onClick={handleClick}
-              className={(isEditable || (isSelectable && player)) ? 'cursor-pointer' : ''}
+              key={`slot-${position}`}
+              transform={`translate(${x} ${y})`}
+              onClick={isEditable ? () => onPositionClick!(position) : undefined}
+              className={isEditable ? 'cursor-pointer' : ''}
             >
-              {isServer && (
-                <circle cx={coord.x} cy={coord.y} r={TOKEN_R + 5} fill="none" stroke="#2A835F" strokeWidth="1.2">
-                  <animate attributeName="r" values={`${TOKEN_R + 3};${TOKEN_R + 9};${TOKEN_R + 3}`} dur="1.8s" repeatCount="indefinite" />
-                  <animate attributeName="opacity" values="0.6;0.1;0.6" dur="1.8s" repeatCount="indefinite" />
-                </circle>
-              )}
-
+              <circle r={HIT_R} fill="transparent" />
               <circle
-                cx={coord.x} cy={coord.y} r={TOKEN_R}
-                fill={isPlayerSelected ? 'rgba(255,255,255,0.2)' : isSelected ? 'rgba(255,255,255,0.15)' : player ? '#0d1f18' : 'rgba(0,0,0,0.3)'}
-                stroke={ringColor}
-                strokeWidth={isPlayerSelected ? 3 : player ? 2.2 : 1.5}
-                strokeDasharray={player ? undefined : '4 3'}
-                style={{ transition: 'stroke 200ms ease, fill 200ms ease, stroke-width 200ms ease' }}
+                r={TOKEN_R}
+                fill={isSelected ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.3)'}
+                stroke={isSelected ? 'currentColor' : 'rgba(255,255,255,0.35)'}
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+                className={`transition-motion-fast ${isSelected ? 'text-select' : ''}`}
               />
-
-              <text
-                x={coord.x} y={coord.y + 5}
-                fontSize={player ? 15 : 11}
-                fontWeight={player ? 700 : 400}
-                fill={player ? '#ffffff' : 'rgba(255,255,255,0.6)'}
-                textAnchor="middle"
-                style={{ pointerEvents: 'none' }}
-              >
-                {player ? player.number : position}
+              <text y={5} fontSize={11} fill="rgba(255,255,255,0.6)" textAnchor="middle" style={{ pointerEvents: 'none' }}>
+                {position}
               </text>
-
               <text
-                x={coord.x} y={coord.y + TOKEN_R + 11}
+                y={TOKEN_R + 11}
                 fontSize="7.5"
-                fill={player?.isLibero ? '#8BBB92' : isSelected ? '#ffffff' : 'rgba(255,255,255,0.6)'}
+                fill={isSelected ? undefined : 'rgba(255,255,255,0.6)'}
+                className={isSelected ? 'fill-select' : ''}
                 textAnchor="middle"
                 style={{ pointerEvents: 'none' }}
               >
-                {player
-                  ? player.name.length > 13 ? player.name.slice(0, 12) + '…' : player.name
-                  : isSelected ? 'pick player' : `pos ${position}`}
+                {isSelected ? 'pick player' : `pos ${position}`}
               </text>
+            </g>
+          )
+        })}
 
-              {player?.isLibero && (
+        {shown.map(({ key, item: player, state }) => {
+          const { x, y } = POSITION_COORDS[player.position]
+          const isPlayerSelected = selectedPlayerId === player.playerId
+          const isServer = state !== 'exiting' && servingPosition === player.position
+          const clickable = state !== 'exiting' && (isEditable || isSelectable)
+
+          const handleClick = () => {
+            if (!clickable) return
+            if (isEditable) onPositionClick!(player.position)
+            else onPlayerClick!(player.playerId)
+          }
+
+          const ringClass = isPlayerSelected ? 'stroke-select' : player.isLibero ? 'stroke-libero' : 'stroke-us'
+
+          return (
+            <g key={key} className="court-slot" style={{ transform: `translate(${x}px, ${y}px)` }}>
+              <g
+                className={state === 'entering' ? 'court-enter' : state === 'exiting' ? 'court-exit' : ''}
+                onAnimationEnd={settle(key)}
+                onClick={handleClick}
+                style={clickable ? { cursor: 'pointer' } : undefined}
+              >
+                <circle r={HIT_R} fill="transparent" />
+
+                {isServer && (
+                  <circle r={TOKEN_R} fill="none" strokeWidth="1.2" className="court-serve-pulse stroke-us" />
+                )}
+
+                {cue && cue.playerId === player.playerId && state !== 'exiting' && (
+                  <circle
+                    key={cue.key}
+                    r={TOKEN_R}
+                    fill="none"
+                    strokeWidth="3"
+                    className={`court-cue ${cue.tone === 'us' ? 'stroke-us' : 'stroke-opp'}`}
+                  />
+                )}
+
+                <circle
+                  r={TOKEN_R}
+                  fill={isPlayerSelected ? 'rgba(255,255,255,0.2)' : undefined}
+                  strokeWidth={isPlayerSelected ? 3 : 2.2}
+                  className={`transition-motion-fast ${ringClass} ${isPlayerSelected ? '' : 'fill-token'}`}
+                />
+
+                <text y={5} fontSize={15} fontWeight={700} className="fill-select" textAnchor="middle" style={{ pointerEvents: 'none' }}>
+                  {player.number}
+                </text>
+
                 <text
-                  x={coord.x} y={coord.y + TOKEN_R + 19}
-                  fontSize="5.5" fill="#8BBB92" textAnchor="middle" letterSpacing="1"
+                  y={TOKEN_R + 11}
+                  fontSize="7.5"
+                  fill={player.isLibero ? 'currentColor' : 'rgba(255,255,255,0.6)'}
+                  className={player.isLibero ? 'text-libero' : ''}
+                  textAnchor="middle"
                   style={{ pointerEvents: 'none' }}
                 >
-                  LIBERO
+                  {shortName(player.name)}
                 </text>
-              )}
+
+                {player.isLibero && (
+                  <text
+                    y={TOKEN_R + 19}
+                    fontSize="5.5" textAnchor="middle" letterSpacing="1"
+                    className="fill-libero"
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    LIBERO
+                  </text>
+                )}
+              </g>
             </g>
           )
         })}
       </svg>
 
-      <div className="flex justify-between px-3 py-1.5 border-t border-[#0f2d30] text-[9px] uppercase tracking-widest text-[#4a6b6b]">
-        <span>{showRotationLabel ? `Rotation ${showRotationLabel}` : 'Pos 1 serves'}</span>
-        <span>{players.length}/6 on court</span>
-      </div>
+      {showFooter && (
+        <div className="flex justify-between px-3 py-1.5 border-t border-line bg-surface text-[9px] uppercase tracking-widest text-muted shrink-0">
+          <span>{showRotationLabel ? `Rotation ${showRotationLabel}` : 'Pos 1 serves'}</span>
+          <span>{players.length}/6 on court</span>
+        </div>
+      )}
     </div>
   )
 }

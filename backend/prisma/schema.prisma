@@ -123,6 +123,7 @@ model MatchSet {
   ourTimeoutsRemaining   Int            @default(2)
   oppTimeoutsRemaining   Int            @default(2)
   status                 String         @default("active")
+  version                Int            @default(0)
   match                  Match          @relation(fields: [matchId], references: [id], onDelete: Cascade)
   rotations              Rotation[]
   substitutions          Substitution[]
@@ -136,6 +137,9 @@ model Rotation {
   setId          String
   rotationNumber Int
   positions      Json
+  // Libero overlay on top of the rotation order: who is on for whom, and the
+  // rally of the last libero replacement. Null on rows written before P1.
+  libero         Json?
   recordedAt     DateTime @default(now())
   set            MatchSet @relation(fields: [setId], references: [id], onDelete: Cascade)
 }
@@ -185,6 +189,7 @@ model MatchEvent {
   opponentPlayerId String?
   rotation         Int?
   payload          Json            @default("{}")
+  clientEventId    String?         @unique
   occurredAt       DateTime        @default(now())
   set              MatchSet        @relation(fields: [setId], references: [id], onDelete: Cascade)
   player           Player?         @relation(fields: [playerId], references: [id])

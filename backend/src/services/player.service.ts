@@ -1,12 +1,5 @@
 import prisma from '../lib/prisma'
-
-
-const isTeamMember = async (teamId: string, userId: string) => {
-  const member = await prisma.teamMember.findUnique({
-    where: { teamId_userId: { teamId, userId } }
-  })
-  if (!member) throw new Error('FORBIDDEN')
-}
+import { requirePermission } from './team-access'
 
 export const addPlayer = async (
   teamId: string,
@@ -18,7 +11,7 @@ export const addPlayer = async (
     isLibero?: boolean
   }
 ) => {
-  await isTeamMember(teamId, userId)
+  await requirePermission(teamId, userId, 'roster.edit')
 
   const existing = await prisma.player.findFirst({
     where: { teamId, number: data.number }
@@ -40,7 +33,7 @@ export const addPlayer = async (
 }
 
 export const getPlayers = async (teamId: string, userId: string) => {
-  await isTeamMember(teamId, userId)
+  await requirePermission(teamId, userId, 'team.view')
 
   const players = await prisma.player.findMany({
     where: { teamId }
@@ -61,7 +54,7 @@ export const updatePlayer = async (
     isActive?: boolean
   }
 ) => {
-  await isTeamMember(teamId, userId)
+  await requirePermission(teamId, userId, 'roster.edit')
 
   const player = await prisma.player.findFirst({
     where: { id: playerId, teamId }
@@ -89,7 +82,7 @@ export const removePlayer = async (
   playerId: string,
   userId: string
 ) => {
-  await isTeamMember(teamId, userId)
+  await requirePermission(teamId, userId, 'roster.edit')
 
   const player = await prisma.player.findFirst({
     where: { id: playerId, teamId }

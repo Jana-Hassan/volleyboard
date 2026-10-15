@@ -1,1 +1,102 @@
 @import "tailwindcss";
+
+@theme {
+  --color-surface: #050d0f;
+  --color-card: #0a1a1c;
+  --color-line: #0f2d30;
+  --color-muted: #4a6b6b;
+  --color-us: #2A835F;
+  --color-us-hover: #235a45;
+  --color-libero: #8BBB92;
+  --color-opp: #8B1A2C;
+  --color-opp-hover: #6d1423;
+  --color-opp-soft: #b02a3f;
+  --color-token: #0d1f18;
+  --color-court: #B85C38;
+  --color-freezone: #0d3028;
+  --color-select: #ffffff;
+
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+:root {
+  --motion-fast: 120ms;
+  --motion-base: 220ms;
+  --motion-slow: 450ms;
+}
+
+@utility transition-motion {
+  transition-property: color, background-color, border-color, fill, stroke, opacity, transform, width;
+  transition-timing-function: var(--ease-standard);
+  transition-duration: var(--motion-base);
+}
+
+@utility transition-motion-fast {
+  transition-property: color, background-color, border-color, fill, stroke, opacity, transform, width;
+  transition-timing-function: var(--ease-standard);
+  transition-duration: var(--motion-fast);
+}
+
+.court-slot {
+  transition: transform var(--motion-slow) var(--ease-standard);
+}
+
+.court-enter {
+  animation: court-enter var(--motion-slow) var(--ease-standard) both;
+}
+
+.court-exit {
+  animation: court-exit var(--motion-base) var(--ease-standard) both;
+  pointer-events: none;
+}
+
+.court-cue {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: court-cue var(--motion-slow) var(--ease-standard) both;
+  pointer-events: none;
+}
+
+.court-serve-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: court-serve-pulse 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.number-tick {
+  animation: number-tick var(--motion-base) var(--ease-standard) both;
+}
+
+@keyframes court-enter {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes court-exit {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(18px); }
+}
+
+@keyframes court-cue {
+  from { opacity: 0.9; transform: scale(1); }
+  to { opacity: 0; transform: scale(1.7); }
+}
+
+@keyframes court-serve-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1.1); }
+  50% { opacity: 0.1; transform: scale(1.4); }
+}
+
+@keyframes number-tick {
+  from { opacity: 0; transform: translateY(-0.25em); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}

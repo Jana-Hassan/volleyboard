@@ -157,7 +157,7 @@ export interface PlayerStats {
 
 export interface LiveStats {
   players: PlayerStats[]
-  opponent: any[]
+  opponent: unknown[]
 }
 
 export type EventType = 'attack' | 'serve' | 'reception' | 'block' | 'dig' | 'set'

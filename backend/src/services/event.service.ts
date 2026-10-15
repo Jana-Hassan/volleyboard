@@ -1,11 +1,13 @@
 import prisma from '../lib/prisma'
 import { VALID_OUTCOMES } from '../lib/volleyball.constants'
-// Depends on scoring.service, not match.service: both sit above the same
-// shared module rather than reaching sideways into each other.
+import { aggregatePlayers, skillLine, ATTACK_ZONES, StatEvent } from '../lib/stats'
 import { scorePointWithin } from './scoring.service'
-import { checkMembership, checkAnalystOrCoach } from './team-access'
+import { requirePermission } from './team-access'
+import { assertLiberoMayPerform } from '../fsm/match.fsm'
+import { lockSet } from './row-lock'
 import { publishAll } from '../events/event-bus'
-import type { AnyDomainEvent } from '../events/domain-events'
+import { AnyDomainEvent, EVENT_LOGGED, EventLoggedPayload } from '../events/domain-events'
+import { stampWithin } from './set-version'
 
 export const logEvent = async (
   setId: string,
@@ -17,6 +19,8 @@ export const logEvent = async (
     playerId?: string
     opponentPlayerId?: string
     rotation?: number
+    clientEventId?: string
+    zone?: number
   }
 ) => {
   const set = await prisma.matchSet.findUnique({
@@ -27,17 +31,19 @@ export const logEvent = async (
   if (!set) throw new Error('SET_NOT_FOUND')
   if (set.status === 'finished') throw new Error('SET_FINISHED')
 
-  await checkAnalystOrCoach(set.match.teamId, userId)
+  await requirePermission(set.match.teamId, userId, 'match.code')
 
   const validOutcomes = VALID_OUTCOMES[data.eventType]
   if (!validOutcomes) throw new Error('INVALID_EVENT_TYPE')
   if (!validOutcomes.includes(data.outcome)) throw new Error('INVALID_OUTCOME')
+  if (data.zone !== undefined && (data.eventType !== 'attack' || !ATTACK_ZONES.includes(data.zone))) throw new Error('INVALID_ZONE')
 
   if (data.team === 'us' && data.playerId) {
     const player = await prisma.player.findFirst({
       where: { id: data.playerId, teamId: set.match.teamId }
     })
     if (!player) throw new Error('PLAYER_NOT_FOUND')
+    if (player.isLibero) assertLiberoMayPerform(data.eventType)
   }
 
   if (data.team === 'opponent' && data.opponentPlayerId) {
@@ -58,17 +64,33 @@ export const logEvent = async (
     scored = data.team === 'us' ? 'opponent' : 'us'
   }
 
-  const { event, events } = await prisma.$transaction(async (tx) => {
+  const { event, events, duplicate } = await prisma.$transaction(async (tx) => {
+    await lockSet(tx, setId)
+    const current = await tx.matchSet.findUniqueOrThrow({ where: { id: setId } })
+    if (current.status === 'finished') throw new Error('SET_FINISHED')
+    const pendingChallenge = await tx.challenge.findFirst({ where: { setId, successful: null } })
+    if (pendingChallenge) throw new Error('CHALLENGE_PENDING')
+
+    if (data.clientEventId) {
+      const existing = await tx.matchEvent.findUnique({
+        where: { clientEventId: data.clientEventId },
+        include: { player: true, opponentPlayer: true }
+      })
+      if (existing) return { event: existing, events: [] as AnyDomainEvent[], duplicate: true }
+    }
+
     const event = await tx.matchEvent.create({
       data: {
         setId,
+        clientEventId: data.clientEventId ?? null,
         team: data.team,
         eventType: data.eventType,
         outcome: data.outcome,
         playerId: data.playerId ?? null,
         opponentPlayerId: data.opponentPlayerId ?? null,
-        rotation: data.rotation ?? set.currentRotation,
-        payload: {}
+        rotation: data.rotation ?? current.currentRotation,
+        payload: data.zone !== undefined ? { zone: data.zone } : {},
+        occurredAt: new Date()
       },
       include: {
         player: true,
@@ -76,18 +98,27 @@ export const logEvent = async (
       }
     })
 
-    if (!scored) return { event, events: [] as AnyDomainEvent[] }
-
-    const { events } = await scorePointWithin(tx, setId, userId, scored)
-    return { event, events }
+    const logged: AnyDomainEvent = {
+      name: EVENT_LOGGED,
+      matchId: set.matchId,
+      payload: { setId, event, clientEventId: data.clientEventId ?? null, scored }
+    }
+    const pointEvents = scored
+      ? (await scorePointWithin(tx, setId, userId, scored, { sourceEventId: event.id })).events
+      : []
+    const events = await stampWithin(tx, setId, [logged, ...pointEvents])
+    return { event, events, duplicate: false }
   }, { timeout: 15000 })
 
-  publishAll(events)
-
- 
   const liveStats = await calculateLiveStats(setId, set.matchId)
 
-  return { event, liveStats, scored }
+  if (events.length > 0) {
+    (events[0].payload as EventLoggedPayload).liveStats = liveStats
+    publishAll(events)
+  }
+
+  const version = (events[events.length - 1]?.payload as { version?: number } | undefined)?.version
+  return { event, liveStats, scored: duplicate ? null : scored, duplicate, version }
 }
 
 export const getLiveStatsForSet = async (setId: string, userId: string) => {
@@ -97,7 +128,7 @@ export const getLiveStatsForSet = async (setId: string, userId: string) => {
   })
 
   if (!set) throw new Error('SET_NOT_FOUND')
-  await checkMembership(set.match.teamId, userId)
+  await requirePermission(set.match.teamId, userId, 'team.view')
 
   return calculateLiveStats(setId, set.matchId)
 }
@@ -109,7 +140,7 @@ export const getSetEvents = async (setId: string, userId: string) => {
   })
 
   if (!set) throw new Error('SET_NOT_FOUND')
-  await checkMembership(set.match.teamId, userId)
+  await requirePermission(set.match.teamId, userId, 'team.view')
 
   const events = await prisma.matchEvent.findMany({
     where: { setId },
@@ -123,145 +154,39 @@ export const getSetEvents = async (setId: string, userId: string) => {
   return events
 }
 
-export const calculateLiveStats = async (setId: string, matchId: string) => {
+export const calculateLiveStats = async (_setId: string, matchId: string) => {
   const events = await prisma.matchEvent.findMany({
     where: {
       set: { matchId },
       eventType: { in: ['attack', 'serve', 'reception', 'block', 'dig', 'set'] }
     },
-    include: { player: true }
+    include: { player: true, opponentPlayer: true },
+    orderBy: { occurredAt: 'asc' }
   })
 
-  const playerStats: Record<string, any> = {}
+  const statEvents: StatEvent[] = events.map(e => ({
+    id: e.id,
+    team: e.team,
+    eventType: e.eventType,
+    outcome: e.outcome,
+    playerId: e.playerId,
+    playerName: e.player?.name ?? null,
+    rotation: e.rotation,
+    payload: e.payload
+  }))
 
-  for (const event of events) {
-    if (event.team !== 'us' || !event.playerId) continue
-
-    const pid = event.playerId
-    if (!playerStats[pid]) {
-      playerStats[pid] = {
-        playerId: pid,
-        playerName: event.player?.name ?? 'Unknown',
-        attack:    { total: 0, kills: 0, errors: 0, efficiency: 0 },
-        serve:     { total: 0, aces: 0, errors: 0, efficiency: 0 },
-        reception: { total: 0, perfect: 0, good: 0, errors: 0, efficiency: 0 },
-        block:     { total: 0, kills: 0, errors: 0, touches: 0 },
-        dig:       { total: 0, perfect: 0, good: 0, errors: 0 },
-        set:       { total: 0, perfect: 0, good: 0, errors: 0 },
-        totalPoints: 0
-      }
-    }
-
-    const stats = playerStats[pid]
-
-    switch (event.eventType) {
-      case 'attack':
-        stats.attack.total++
-        if (event.outcome === 'kill') { stats.attack.kills++; stats.totalPoints++ }
-        if (event.outcome === 'error') stats.attack.errors++
-        stats.attack.efficiency = stats.attack.total > 0
-          ? (stats.attack.kills - stats.attack.errors) / stats.attack.total
-          : 0
-        break
-
-      case 'serve':
-        stats.serve.total++
-        if (event.outcome === 'ace') { stats.serve.aces++; stats.totalPoints++ }
-        if (event.outcome === 'error') stats.serve.errors++
-        stats.serve.efficiency = stats.serve.total > 0
-          ? stats.serve.aces / stats.serve.total
-          : 0
-        break
-
-      case 'reception':
-        stats.reception.total++
-        if (event.outcome === 'perfect') stats.reception.perfect++
-        if (event.outcome === 'good') stats.reception.good++
-        if (event.outcome === 'error') stats.reception.errors++
-        stats.reception.efficiency = stats.reception.total > 0
-          ? (stats.reception.perfect + stats.reception.good * 0.5) / stats.reception.total
-          : 0
-        break
-
-      case 'block':
-        stats.block.total++
-        if (event.outcome === 'kill') { stats.block.kills++; stats.totalPoints++ }
-        if (event.outcome === 'error') stats.block.errors++
-        if (event.outcome === 'touch') stats.block.touches++
-        break
-
-      case 'dig':
-        stats.dig.total++
-        if (event.outcome === 'perfect') stats.dig.perfect++
-        if (event.outcome === 'good') stats.dig.good++
-        if (event.outcome === 'error') stats.dig.errors++
-        break
-
-      case 'set':
-        stats.set.total++
-        if (event.outcome === 'perfect') stats.set.perfect++
-        if (event.outcome === 'good') stats.set.good++
-        if (event.outcome === 'error') stats.set.errors++
-        break
-    }
-  }
-
-  const opponentStats = calculateOpponentStats(
-    events.filter(e => e.team === 'opponent')
-  )
+  const opponentIds = [...new Set(events.filter(e => e.team === 'opponent' && e.opponentPlayerId).map(e => e.opponentPlayerId as string))]
 
   return {
-    players: Object.values(playerStats),
-    opponent: opponentStats
-  }
-}
-
-const calculateOpponentStats = (events: any[]) => {
-  const playerStats: Record<string, any> = {}
-
-  for (const event of events) {
-    if (!event.opponentPlayerId) continue
-
-    const pid = event.opponentPlayerId
-    if (!playerStats[pid]) {
-      playerStats[pid] = {
-        opponentPlayerId: pid,
-        attack:    { total: 0, kills: 0, errors: 0, efficiency: 0 },
-        serve:     { total: 0, aces: 0, errors: 0, efficiency: 0 },
-        reception: { total: 0, perfect: 0, good: 0, errors: 0, efficiency: 0 },
-        totalPoints: 0
+    players: aggregatePlayers(statEvents),
+    opponent: opponentIds.map(opponentPlayerId => {
+      const op = events.find(e => e.opponentPlayerId === opponentPlayerId)!.opponentPlayer!
+      return {
+        opponentPlayerId,
+        jersey: op.jersey,
+        name: op.name,
+        ...skillLine(statEvents.filter((e, idx) => events[idx].opponentPlayerId === opponentPlayerId))
       }
-    }
-
-    const stats = playerStats[pid]
-
-    switch (event.eventType) {
-      case 'attack':
-        stats.attack.total++
-        if (event.outcome === 'kill') { stats.attack.kills++; stats.totalPoints++ }
-        if (event.outcome === 'error') stats.attack.errors++
-        stats.attack.efficiency = stats.attack.total > 0
-          ? (stats.attack.kills - stats.attack.errors) / stats.attack.total
-          : 0
-        break
-
-      case 'serve':
-        stats.serve.total++
-        if (event.outcome === 'ace') { stats.serve.aces++; stats.totalPoints++ }
-        if (event.outcome === 'error') stats.serve.errors++
-        break
-
-      case 'reception':
-        stats.reception.total++
-        if (event.outcome === 'perfect') stats.reception.perfect++
-        if (event.outcome === 'good') stats.reception.good++
-        if (event.outcome === 'error') stats.reception.errors++
-        stats.reception.efficiency = stats.reception.total > 0
-          ? (stats.reception.perfect + stats.reception.good * 0.5) / stats.reception.total
-          : 0
-        break
-    }
+    }).sort((a, b) => a.jersey - b.jersey)
   }
-
-  return Object.values(playerStats)
 }

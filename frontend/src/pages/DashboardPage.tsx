@@ -1,96 +1,61 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
 import api from '../lib/api'
 import type { Team } from '../types'
-import Navbar from '../components/Navbar'
+import PageShell from '../components/PageShell'
+import FitList from '../components/ui/FitList'
+import Button from '../components/ui/Button'
+import { useBreakpoint } from '../hooks/useBreakpoint'
 
 const DashboardPage = () => {
-  const { user } = useAuth()
   const navigate = useNavigate()
-  const [teams, setTeams] = useState<Team[]>([])
-  const [loading, setLoading] = useState(true)
+  const bp = useBreakpoint()
+  const [teams, setTeams] = useState<Team[] | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    const fetchTeams = async () => {
-      try {
-        const response = await api.get('/teams')
-        setTeams(response.data)
-      } catch {
-        setError('Failed to load teams')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchTeams()
+    api.get('/teams').then(r => setTeams(r.data)).catch(() => setError('Failed to load teams'))
   }, [])
 
   return (
-    <div className="min-h-screen bg-[#050d0f] text-white">
-      <Navbar />
-
-      <div className="max-w-4xl mx-auto px-6 py-10">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h2 className="text-xl font-semibold text-white">Your Teams</h2>
-            <p className="text-[#4a6b6b] text-sm mt-1">
-              Select a team to manage roster and matches
-            </p>
-          </div>
-          <button
-            onClick={() => navigate('/teams/new')}
-            className="bg-[#2A835F] text-white px-4 py-2 rounded text-sm font-medium hover:bg-[#235a45] transition-colors"
-          >
-            + New Team
-          </button>
+    <PageShell maxWidth="max-w-4xl">
+      <header className="shrink-0 flex items-center justify-between gap-4 mb-6">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold">Your teams</h1>
+          <p className="text-muted text-sm mt-1">Select a team to manage roster and matches</p>
         </div>
+        <Button tone="primary" onClick={() => navigate('/teams/new')}>+ New team</Button>
+      </header>
 
-        {loading && (
-          <div className="text-[#4a6b6b] text-sm">Loading teams...</div>
-        )}
+      {error && <p className="shrink-0 text-opp-soft text-sm mb-3">{error}</p>}
+      {!teams && !error && <p className="shrink-0 text-muted text-sm">Loading teams…</p>}
 
-        {error && (
-          <div className="text-[#8B1A2C] text-sm">{error}</div>
-        )}
-
-        {!loading && teams.length === 0 && (
-          <div className="border border-[#0f2d30] rounded p-10 text-center">
-            <p className="text-[#4a6b6b] text-sm">No teams yet.</p>
-            <p className="text-[#4a6b6b] text-sm mt-1">
-              Create a team or ask your manager to invite you.
-            </p>
-          </div>
-        )}
-
-        <div className="grid gap-3">
-          {teams.map((team) => (
-            <div
-              key={team.id}
+      {teams && (
+        <FitList
+          className="flex-1"
+          items={teams}
+          rowHeight={88}
+          columns={bp === 'phone' ? 1 : 2}
+          keyOf={t => t.id}
+          empty="No teams yet. Create one, or ask your manager to invite you."
+          renderRow={team => (
+            <button
+              type="button"
               onClick={() => navigate(`/teams/${team.id}`)}
-              className="border border-[#0f2d30] bg-[#0a1a1c] rounded p-5 cursor-pointer hover:border-[#2A835F] transition-colors group"
+              className="w-full h-20 flex items-center justify-between gap-3 border border-line bg-card rounded px-5 text-left hover:border-us transition-motion-fast group"
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-white font-medium group-hover:text-[#8BBB92] transition-colors">
-                    {team.name}
-                  </h3>
-                  <p className="text-[#4a6b6b] text-xs mt-2">
-  {team._count?.players ?? 0} players · {team.members.length} staff
-</p> 
-              
-              
-                </div>
-                <span className="text-[#4a6b6b] text-lg group-hover:text-[#2A835F] transition-colors">
-                  →
+              <span className="min-w-0">
+                <span className="block text-white font-medium truncate group-hover:text-libero transition-motion-fast">{team.name}</span>
+                <span className="block text-muted text-xs mt-1.5">
+                  {team._count?.players ?? 0} players · {team.members.length} staff · {team._count?.matches ?? 0} matches
                 </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
+              </span>
+              <span className="text-muted text-lg group-hover:text-us transition-motion-fast">→</span>
+            </button>
+          )}
+        />
+      )}
+    </PageShell>
   )
 }
 

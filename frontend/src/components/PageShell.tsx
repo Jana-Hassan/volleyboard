@@ -9,10 +9,10 @@ interface PageShellProps {
 
 const PageShell = ({ breadcrumbs, children, maxWidth = 'max-w-5xl' }: PageShellProps) => {
   return (
-    <div className="h-screen bg-[#050d0f] text-white flex flex-col overflow-hidden">
+    <div className="h-dvh bg-surface text-white flex flex-col overflow-hidden">
       <Navbar breadcrumbs={breadcrumbs} />
       <div className="flex-1 min-h-0 overflow-hidden">
-        <div className={`${maxWidth} mx-auto px-6 py-5 h-full flex flex-col`}>
+        <div className={`${maxWidth} mx-auto px-4 md:px-6 py-4 md:py-5 h-full flex flex-col`}>
           {children}
         </div>
       </div>

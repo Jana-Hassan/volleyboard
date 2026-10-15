@@ -1,20 +1,6 @@
 import prisma from '../lib/prisma'
-import { VALID_ROLES, VALID_ROTATION_POSITIONS } from '../lib/volleyball.constants'
-
-const checkCoachOrManager = async (teamId: string, userId: string): Promise<void> => {
-  const member = await prisma.teamMember.findUnique({
-    where: { teamId_userId: { teamId, userId } }
-  })
-  if (!member) throw new Error('FORBIDDEN')
-  if (!['manager', 'coach'].includes(member.role)) throw new Error('FORBIDDEN')
-}
-
-const checkMembership = async (teamId: string, userId: string): Promise<void> => {
-  const member = await prisma.teamMember.findUnique({
-    where: { teamId_userId: { teamId, userId } }
-  })
-  if (!member) throw new Error('FORBIDDEN')
-}
+import { VALID_ROLES, VALID_ROTATION_POSITIONS, MAX_LIBEROS } from '../lib/volleyball.constants'
+import { requirePermission } from './team-access'
 
 interface SlotInput {
   playerId: string
@@ -22,7 +8,12 @@ interface SlotInput {
   rotationPosition?: number | null
 }
 
-const validateSlots = async (teamId: string, slots: SlotInput[], rotationSystem: string) => {
+/**
+ * Lineup composition (FIVB 7.3, 19.1): six starters in distinct positions 1-6,
+ * at most two liberos who are never among the six, and a player registered as
+ * libero only ever plays as libero (or sits the match out as reserved).
+ */
+export const validateLineupSlots = async (teamId: string, slots: SlotInput[], rotationSystem: string) => {
   for (const slot of slots) {
     if (!VALID_ROLES.includes(slot.role)) throw new Error('INVALID_ROLE')
   }
@@ -33,7 +24,11 @@ const validateSlots = async (teamId: string, slots: SlotInput[], rotationSystem:
   })
   if (players.length !== playerIds.length) throw new Error('INVALID_PLAYERS')
 
+  const playerById = new Map(players.map(p => [p.id, p]))
+  const isLibero = (slot: SlotInput) => playerById.get(slot.playerId)!.isLibero
+
   const starters = slots.filter(s => s.role === 'starter')
+  if (starters.some(isLibero)) throw new Error('LIBERO_AS_STARTER')
   if (starters.length !== 6) throw new Error('INVALID_STARTER_COUNT')
 
   const positions = starters.map(s => s.rotationPosition)
@@ -46,13 +41,13 @@ const validateSlots = async (teamId: string, slots: SlotInput[], rotationSystem:
     throw new Error('DUPLICATE_ROTATION_POSITION')
   }
 
-  const starterPlayers = players.filter(p => starters.some(s => s.playerId === p.id))
+  const liberoSlots = slots.filter(s => s.role === 'libero')
+  if (liberoSlots.some(s => !isLibero(s))) throw new Error('NOT_A_LIBERO')
+  if (liberoSlots.length > MAX_LIBEROS) throw new Error('TOO_MANY_LIBEROS')
+  if (slots.some(s => s.role === 'bench' && isLibero(s))) throw new Error('LIBERO_ON_BENCH')
 
-  const liberoCount = starterPlayers.filter(p => p.isLibero).length
-  if (liberoCount > 1) throw new Error('TOO_MANY_LIBEROS')
-
-  const setterCount = starterPlayers.filter(
-    p => p.position.toLowerCase() === 'setter'
+  const setterCount = starters.filter(
+    s => playerById.get(s.playerId)!.position.toLowerCase() === 'setter'
   ).length
 
   if (rotationSystem === '5-1' && setterCount !== 1) {
@@ -63,13 +58,20 @@ const validateSlots = async (teamId: string, slots: SlotInput[], rotationSystem:
   }
 }
 
+// Only starters have a rotation position.
+const slotData = (s: SlotInput) => ({
+  playerId: s.playerId,
+  role: s.role,
+  rotationPosition: s.role === 'starter' ? s.rotationPosition ?? null : null
+})
+
 export const createLineup = async (
   teamId: string,
   userId: string,
   data: { name: string; rotationSystem: string; slots: SlotInput[] }
 ) => {
-  await checkCoachOrManager(teamId, userId)
-  await validateSlots(teamId, data.slots, data.rotationSystem)
+  await requirePermission(teamId, userId, 'lineup.edit')
+  await validateLineupSlots(teamId, data.slots, data.rotationSystem)
 
   const lineup = await prisma.lineup.create({
     data: {
@@ -78,11 +80,7 @@ export const createLineup = async (
       rotationSystem: data.rotationSystem,
       lastEditedById: userId,
       slots: {
-        create: data.slots.map(s => ({
-          playerId: s.playerId,
-          role: s.role,
-          rotationPosition: s.rotationPosition ?? null
-        }))
+        create: data.slots.map(slotData)
       }
     },
     include: {
@@ -95,7 +93,7 @@ export const createLineup = async (
 }
 
 export const getLineups = async (teamId: string, userId: string) => {
-  await checkMembership(teamId, userId)
+  await requirePermission(teamId, userId, 'team.view')
 
   return prisma.lineup.findMany({
     where: { teamId },
@@ -111,7 +109,7 @@ export const getLineups = async (teamId: string, userId: string) => {
 }
 
 export const getLineupById = async (teamId: string, lineupId: string, userId: string) => {
-  await checkMembership(teamId, userId)
+  await requirePermission(teamId, userId, 'team.view')
 
   const lineup = await prisma.lineup.findFirst({
     where: { id: lineupId, teamId },
@@ -134,7 +132,7 @@ export const updateLineup = async (
   userId: string,
   data: { name?: string; rotationSystem?: string; slots?: SlotInput[] }
 ) => {
-  await checkCoachOrManager(teamId, userId)
+  await requirePermission(teamId, userId, 'lineup.edit')
 
   const existing = await prisma.lineup.findFirst({
     where: { id: lineupId, teamId }
@@ -144,19 +142,14 @@ export const updateLineup = async (
   const rotationSystem = data.rotationSystem ?? existing.rotationSystem
 
   if (data.slots) {
-    await validateSlots(teamId, data.slots, rotationSystem)
+    await validateLineupSlots(teamId, data.slots, rotationSystem)
   }
 
   const lineup = await prisma.$transaction(async (tx) => {
     if (data.slots) {
       await tx.lineupSlot.deleteMany({ where: { lineupId } })
       await tx.lineupSlot.createMany({
-        data: data.slots.map(s => ({
-          lineupId,
-          playerId: s.playerId,
-          role: s.role,
-          rotationPosition: s.rotationPosition ?? null
-        }))
+        data: data.slots.map(s => ({ lineupId, ...slotData(s) }))
       })
     }
 
@@ -181,7 +174,7 @@ export const updateLineup = async (
 }
 
 export const deleteLineup = async (teamId: string, lineupId: string, userId: string) => {
-  await checkCoachOrManager(teamId, userId)
+  await requirePermission(teamId, userId, 'lineup.edit')
 
   const lineup = await prisma.lineup.findFirst({
     where: { id: lineupId, teamId }

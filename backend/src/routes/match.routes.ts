@@ -1,26 +1,33 @@
 import { Router } from 'express'
 import { authenticate } from '../middleware/auth'
 import {
-  create,
   start,
   score,
   getState,
   finishSet,
   nextSet,
   finish,
-  getAll
+  live,
+  report,
+  opponentPlayers,
+  addOpponent,
+  removeOpponent
 } from '../controllers/match.controller'
 
-const router = Router({ mergeParams: true })
+
+const router = Router()
 router.use(authenticate)
 
-router.post('/', create)
 router.post('/:matchId/start', start)
 router.get('/:matchId/state', getState)
+router.get('/:matchId/live', live)
+router.get('/:matchId/report', report)
+router.get('/:matchId/opponent-players', opponentPlayers)
+router.post('/:matchId/opponent-players', addOpponent)
+router.delete('/:matchId/opponent-players/:opponentPlayerId', removeOpponent)
 router.post('/:matchId/next-set', nextSet)
 router.post('/:matchId/end', finish)
 router.post('/sets/:setId/point', score)
 router.post('/sets/:setId/end', finishSet)
-router.get('/', getAll)
 
 export default router

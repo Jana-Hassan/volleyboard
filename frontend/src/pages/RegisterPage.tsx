@@ -35,21 +35,21 @@ const RegisterPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#050d0f] flex items-center justify-center px-4">
+    <div className="h-dvh overflow-hidden bg-surface flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
 
         <div className="mb-10 text-center">
           <h1 className="text-2xl font-bold text-white tracking-tight">
-            Volley<span className="text-[#2A835F]">Board</span>
+            Volley<span className="text-us">Board</span>
           </h1>
-          <p className="text-[#4a6b6b] text-sm mt-2">
+          <p className="text-muted text-sm mt-2">
             Create your coaching account
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs uppercase tracking-widest text-[#4a6b6b] mb-2">
+            <label className="block text-xs uppercase tracking-widest text-muted mb-2">
               Full Name
             </label>
             <input
@@ -58,12 +58,12 @@ const RegisterPage = () => {
               onChange={(e) => setName(e.target.value)}
               required
               placeholder="Your full name"
-              className="w-full bg-[#0a1a1c] border border-[#0f2d30] text-white placeholder-[#4a6b6b] rounded px-4 py-3 text-sm focus:outline-none focus:border-[#2A835F] transition-colors"
+              className="w-full bg-card border border-line text-white placeholder-muted rounded px-4 py-3 text-sm focus:outline-none focus:border-us transition-motion-fast"
             />
           </div>
 
           <div>
-            <label className="block text-xs uppercase tracking-widest text-[#4a6b6b] mb-2">
+            <label className="block text-xs uppercase tracking-widest text-muted mb-2">
               Email
             </label>
             <input
@@ -72,12 +72,12 @@ const RegisterPage = () => {
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="coach@team.com"
-              className="w-full bg-[#0a1a1c] border border-[#0f2d30] text-white placeholder-[#4a6b6b] rounded px-4 py-3 text-sm focus:outline-none focus:border-[#2A835F] transition-colors"
+              className="w-full bg-card border border-line text-white placeholder-muted rounded px-4 py-3 text-sm focus:outline-none focus:border-us transition-motion-fast"
             />
           </div>
 
           <div>
-            <label className="block text-xs uppercase tracking-widest text-[#4a6b6b] mb-2">
+            <label className="block text-xs uppercase tracking-widest text-muted mb-2">
               Password
             </label>
             <input
@@ -86,12 +86,12 @@ const RegisterPage = () => {
               onChange={(e) => setPassword(e.target.value)}
               required
               placeholder="Min 8 characters"
-              className="w-full bg-[#0a1a1c] border border-[#0f2d30] text-white placeholder-[#4a6b6b] rounded px-4 py-3 text-sm focus:outline-none focus:border-[#2A835F] transition-colors"
+              className="w-full bg-card border border-line text-white placeholder-muted rounded px-4 py-3 text-sm focus:outline-none focus:border-us transition-motion-fast"
             />
           </div>
 
           {error && (
-            <p className="text-[#8B1A2C] text-sm">
+            <p className="text-opp text-sm">
               {error}
             </p>
           )}
@@ -99,15 +99,15 @@ const RegisterPage = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-[#2A835F] text-white py-3 rounded text-sm font-medium tracking-wide hover:bg-[#235a45] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-us text-white py-3 rounded text-sm font-medium tracking-wide hover:bg-us-hover transition-motion-fast disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Creating account...' : 'Create Account'}
           </button>
         </form>
 
-        <p className="text-center text-[#4a6b6b] text-sm mt-6">
+        <p className="text-center text-muted text-sm mt-6">
           Already have an account?{' '}
-          <Link to="/login" className="text-[#2A835F] hover:text-[#8BBB92] transition-colors">
+          <Link to="/login" className="text-us hover:text-libero transition-motion-fast">
             Sign in
           </Link>
         </p>
