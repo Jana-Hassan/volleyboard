@@ -21,7 +21,7 @@ VolleyBoard lets team staff record every action as the match unfolds. Each actio
 - **Rule enforcement:** rotations, substitutions, time-outs and challenges are **validated on the server**, so invalid actions never reach the match.
 - **Safe concurrent editing:** several staff members can record at the same time **without conflicting updates**, and retried scoring requests are **saved once**.
 - **Corrections:** the latest point or coded event can be **undone**, and a point can be **reversed** after a successful challenge.
-- **Role-based access:** each team role with his own permissions.
+- **Role-based access:** each team role with its own permissions.
 - **Reports and profiles:** finished matches become **detailed reports**, and every player gets **season statistics**.
 - **Responsive interface:** designed for different devices, with every view fitting a single screen.
 
@@ -31,7 +31,7 @@ VolleyBoard lets team staff record every action as the match unfolds. Each actio
 flowchart LR
     C["React client"] <-->|REST| A["Express API"]
     C <-->|WebSocket| S["Socket.io"]
-    A --> P[("PostgreSQL")]
+    A <--> P[("PostgreSQL")]
     A -->|domain events| S
     S <--> R[("Redis")]
 
